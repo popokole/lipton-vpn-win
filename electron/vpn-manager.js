@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const os = require('os')
 const { generateConfig } = require('./xray-config')
+const logger = require('./logger')
 
 let xrayProc = null
 let status = 'disconnected'
@@ -144,7 +145,7 @@ async function connect(server, opts = {}) {
       const lines = d.toString().trim().split('\n')
       for (const line of lines) {
         const t = line.trim()
-        if (t) console.log('[xray stdout]', t)
+        if (t) logger.verbose('[xray stdout]', t)
         if (t.includes('started') || t.includes('Running') || t.includes('[Warning]')) done(true)
       }
     })
@@ -154,9 +155,9 @@ async function connect(server, opts = {}) {
       for (const line of lines) {
         const t = line.trim()
         if (!t) continue
-        console.error('[xray stderr]', t)
+        logger.verbose('[xray stderr]', t)
         const low = t.toLowerCase()
-        if (low.includes('failed') || low.includes('error') || low.includes('dial') && low.includes('refused')) {
+        if (low.includes('failed') || low.includes('error') || (low.includes('dial') && low.includes('refused'))) {
           console.error('[VPN] Ошибка xray →', t)
           done(false, t)
         }

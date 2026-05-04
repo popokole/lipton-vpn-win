@@ -48,4 +48,14 @@ function clearLogs() {
   entries.length = 0
 }
 
-module.exports = { getLogs, clearLogs, getLogFilePath }
+// Verbose: writes only to file, not shown in UI log panel
+function verbose(...args) {
+  const msg = args.map(a =>
+    typeof a === 'object' ? JSON.stringify(a, null, 0) : String(a)
+  ).join(' ')
+  const d = new Date()
+  const hms = d.toTimeString().slice(0, 8)
+  writeToFile(`[${hms}] [VERBOSE] ${msg}`)
+}
+
+module.exports = { getLogs, clearLogs, getLogFilePath, verbose }

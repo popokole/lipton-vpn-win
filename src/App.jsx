@@ -9,6 +9,10 @@ import WelcomeScreen from './components/WelcomeScreen'
 
 const COMING_SOON = [
   { icon: '📊', label: 'Статистика' },
+  { icon: '🤖', label: 'Android' },
+  { icon: '🍎', label: 'iOS' },
+  { icon: '💻', label: 'Mac' },
+  { icon: '📺', label: 'TV' },
 ]
 
 function ComingSoonCard({ item }) {
