@@ -733,6 +733,22 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
   border-color: rgba(52,208,88,0.3);
   box-shadow: 0 4px 20px rgba(52,208,88,0.1);
 }
+.btn-paste {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  color: var(--text2);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, transform 0.15s;
+}
+.btn-paste:hover { background: rgba(255,255,255,0.11); transform: scale(1.04); }
+.btn-paste:active { transform: scale(0.96); }
+
 .add-sub-input {
   flex: 1;
   background: rgba(52,208,88,0.04);

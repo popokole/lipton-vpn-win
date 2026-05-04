@@ -161,6 +161,15 @@ export default function SubscriptionPanel({ subscriptions, onAdd, onRemove, onRe
                 placeholder={`https://${ALLOWED}/...`}
                 autoFocus
               />
+              {!url && (
+                <button className="btn-paste" onClick={async () => {
+                  const text = await navigator.clipboard.readText()
+                  setUrl(text.trim())
+                  setError('')
+                }}>
+                  Вставить
+                </button>
+              )}
               <button className="btn-primary" onClick={handleAdd} disabled={loading}>
                 {loading ? '...' : 'Добавить'}
               </button>
