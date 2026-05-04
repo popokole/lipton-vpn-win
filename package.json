@@ -1,0 +1,86 @@
+{
+  "name": "lipton-vpn",
+  "version": "1.2.1",
+  "description": "Lipton VPN - Быстро и безопасно",
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && node scripts/start-electron.js\"",
+    "build": "vite build",
+    "dist": "npm run build && electron-builder",
+    "start": "node scripts/start-electron.js",
+    "prod": "node scripts/run-prod.js"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.1.0",
+    "electron": "^31.7.7",
+    "electron-builder": "^25.1.8",
+    "flag-icons": "^7.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.11",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.liptonvpn.app",
+    "productName": "Lipton VPN",
+    "copyright": "Copyright © 2025 Lipton VPN",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Lipton VPN",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "LiptonVPN-${version}-portable.exe"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "electron/**/*",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/",
+        "to": "resources/",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "popokole",
+      "repo": "lipton-vpn-win",
+      "private": false
+    }
+  }
+}
