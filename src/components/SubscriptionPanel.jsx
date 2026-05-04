@@ -63,11 +63,6 @@ function SubCard({ sub, onRemove, onRefresh }) {
               {loading ? '...' : 'Обновить'}
             </button>
           )}
-          {!sub.isTrial && (
-            <button className="btn-renew" onClick={() => window.api.openExternal('https://t.me/liptonvpn_bot')}>
-              Продлить
-            </button>
-          )}
           {confirm ? (
             <div className="sub-confirm">
               <button className="sub-confirm-yes" onClick={handleRemove}>Да</button>
@@ -101,6 +96,14 @@ function SubCard({ sub, onRemove, onRefresh }) {
       )}
 
       <TrafficBar userInfo={sub.userInfo} />
+
+      {!sub.isTrial && (
+        <div className="sub-renew-row">
+          <button className="btn-renew" onClick={() => window.api.openExternal('https://t.me/liptonvpn_bot')}>
+            Продлить
+          </button>
+        </div>
+      )}
     </div>
   )
 }

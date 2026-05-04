@@ -787,6 +787,12 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
 .btn-danger:hover { background: rgba(255,69,58,0.22); transform: scale(1.05); }
 .btn-danger:active { transform: scale(0.95); }
 
+.sub-renew-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 14px 10px;
+}
+
 .btn-renew {
   padding: 5px 10px;
   background: rgba(52,199,89,0.12);
