@@ -358,9 +358,12 @@ function setupIPC() {
         settingsManager.set('activeServerId', serverId)
         refreshTray('connected')
         mainWindow?.webContents.send('vpn:status-update', { status: 'connected', serverId })
+      } else {
+        console.error('[VPN:Connect] Подключение не удалось:', result.error || '(нет деталей)')
       }
       return result
     } catch (err) {
+      console.error('[VPN:Connect] Исключение:', err.message)
       return { success: false, error: err.message }
     }
   })

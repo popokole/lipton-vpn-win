@@ -145,7 +145,7 @@ async function connect(server, opts = {}) {
       const lines = d.toString().trim().split('\n')
       for (const line of lines) {
         const t = line.trim()
-        if (t) console.log('[xray]', t)
+        if (t) console.log('[xray stdout]', t)
         if (t.includes('started') || t.includes('Running') || t.includes('[Warning]')) done(true)
       }
     })
@@ -154,8 +154,13 @@ async function connect(server, opts = {}) {
       const lines = d.toString().trim().split('\n')
       for (const line of lines) {
         const t = line.trim()
-        if (t) console.error('[xray]', t)
-        if (t.toLowerCase().includes('failed') || t.toLowerCase().includes('error')) done(false, t)
+        if (!t) continue
+        console.error('[xray stderr]', t)
+        const low = t.toLowerCase()
+        if (low.includes('failed') || low.includes('error') || low.includes('dial') && low.includes('refused')) {
+          console.error('[VPN] Ошибка xray →', t)
+          done(false, t)
+        }
       }
     })
 
@@ -165,7 +170,11 @@ async function connect(server, opts = {}) {
     })
 
     xrayProc.on('exit', (code) => {
-      console.log(`[VPN] xray завершён с кодом ${code}`)
+      console.log(`[VPN] xray завершён, код ${code}, статус был: ${status}`)
+      if (!resolved) {
+        console.error(`[VPN] xray завершился до подключения, код: ${code}`)
+        done(false, `xray завершился с кодом ${code}`)
+      }
       xrayProc = null
       if (status === 'connected') {
         status = 'disconnected'
