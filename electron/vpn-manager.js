@@ -112,7 +112,6 @@ async function connect(server, opts = {}) {
   console.log(`[VPN] Подключение к: ${server.remark || server.address} (${server.protocol})`)
   console.log(`[VPN] Сервер: ${server.address}:${server.port}, httpPort=${opts.httpPort || 10809}`)
   console.log(`[VPN] Обход РФ: ${opts.bypassRu !== false ? 'вкл' : 'выкл'}`)
-  console.log(`[VPN] Блокировка рекламы: ${opts.adBlock ? 'вкл' : 'выкл'}`)
   console.log(`[VPN] Конфиг: ${configPath}`)
 
   return new Promise((resolve) => {

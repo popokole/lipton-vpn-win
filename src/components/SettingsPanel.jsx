@@ -7,7 +7,6 @@ export default function SettingsPanel({ onClose }) {
   const [bypassRu,    setBypassRu]    = useState(true)
   const [killSwitch,  setKillSwitch]  = useState(false)
   const [autoConnect, setAutoConnect] = useState(false)
-  const [adBlock,     setAdBlock]     = useState(false)
   const [flushing,    setFlushing]    = useState(false)
   const [logs, setLogs]             = useState([])
   const [logLoading, setLogLoading] = useState(false)
@@ -25,7 +24,6 @@ export default function SettingsPanel({ onClose }) {
     window.api.getBypassRu().then(v    => setBypassRu(v !== false))
     window.api.getKillSwitch().then(v  => setKillSwitch(!!v))
     window.api.getAutoConnect().then(v => setAutoConnect(!!v))
-    window.api.getAdBlock().then(v     => setAdBlock(!!v))
     window.api.canClaimTrial().then(r => {
       if (r?.canClaim) setCanTrial(true)
       else setTrialState('claimed')
@@ -70,12 +68,6 @@ export default function SettingsPanel({ onClose }) {
     const next = !autoConnect
     setAutoConnect(next)
     await window.api.setAutoConnect(next)
-  }
-
-  async function toggleAdBlock() {
-    const next = !adBlock
-    setAdBlock(next)
-    await window.api.setAdBlock(next)
   }
 
   async function handleFlushDns() {
@@ -251,16 +243,6 @@ export default function SettingsPanel({ onClose }) {
                 <span className="settings-row-sub">Автоматически включать VPN при старте</span>
               </div>
               <button className={`toggle${autoConnect ? ' toggle--on' : ''}`} onClick={toggleAutoConnect}>
-                <span className="toggle-thumb" />
-              </button>
-            </div>
-
-            <div className="settings-row">
-              <div className="settings-row-info">
-                <span className="settings-row-label">Блокировка рекламы</span>
-                <span className="settings-row-sub">Фильтрация через AdGuard DNS</span>
-              </div>
-              <button className={`toggle${adBlock ? ' toggle--on' : ''}`} onClick={toggleAdBlock}>
                 <span className="toggle-thumb" />
               </button>
             </div>

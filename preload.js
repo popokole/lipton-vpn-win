@@ -57,8 +57,6 @@ contextBridge.exposeInMainWorld('api', {
   setKillSwitch:        (v)      => ipcRenderer.invoke('settings:set-kill-switch', v),
   getAutoConnect:       ()       => ipcRenderer.invoke('settings:get-auto-connect'),
   setAutoConnect:       (v)      => ipcRenderer.invoke('settings:set-auto-connect', v),
-  getAdBlock:           ()       => ipcRenderer.invoke('settings:get-ad-block'),
-  setAdBlock:           (v)      => ipcRenderer.invoke('settings:set-ad-block', v),
   flushDns:             ()       => ipcRenderer.invoke('settings:flush-dns'),
   isFirstLaunch:        ()       => ipcRenderer.invoke('settings:is-first-launch'),
   completeOnboarding:   ()       => ipcRenderer.invoke('settings:complete-onboarding'),

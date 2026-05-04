@@ -260,12 +260,6 @@ function setupIPC() {
     console.log(`[Settings] Автоподключение: ${enabled ? 'вкл' : 'выкл'}`)
   })
 
-  ipcMain.handle('settings:get-ad-block', () => settingsManager.get('adBlock') === true)
-  ipcMain.handle('settings:set-ad-block', (_, enabled) => {
-    settingsManager.set('adBlock', enabled)
-    console.log(`[Settings] Блокировка рекламы: ${enabled ? 'вкл' : 'выкл'}`)
-  })
-
   ipcMain.handle('settings:flush-dns', async () => {
     try {
       const { execSync } = require('child_process')
@@ -343,7 +337,7 @@ function setupIPC() {
         dataDir: settingsManager.getDataDir(),
         bypassRu: settings.bypassRu !== false,
         bypassDomains: settings.bypassDomains || [],
-        adBlock: settings.adBlock === true,
+
         onUnexpectedDisconnect: () => {
           settingsManager.set('activeServerId', null)
           refreshTray('disconnected')

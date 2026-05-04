@@ -787,6 +787,20 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
 .btn-danger:hover { background: rgba(255,69,58,0.22); transform: scale(1.05); }
 .btn-danger:active { transform: scale(0.95); }
 
+.btn-renew {
+  padding: 5px 10px;
+  background: rgba(52,199,89,0.12);
+  border: 1px solid rgba(52,199,89,0.25);
+  border-radius: 7px;
+  color: var(--green);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s var(--spring);
+}
+.btn-renew:hover { background: rgba(52,199,89,0.22); transform: scale(1.05); }
+.btn-renew:active { transform: scale(0.95); }
+
 .error-msg {
   font-size: 11.5px;
   color: var(--red);

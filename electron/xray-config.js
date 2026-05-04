@@ -86,8 +86,6 @@ function generateConfig(server, opts = {}) {
   const httpPort = opts.httpPort || 10809
   const bypassRu = opts.bypassRu !== false // default: true
   const bypassDomains = (opts.bypassDomains || []).map(d => `domain:${d.replace(/^domain:/, '')}`)
-  const adBlock = opts.adBlock === true
-
   let outbound
   if (server.protocol === 'vless') outbound = vlessOutbound(server)
   else if (server.protocol === 'vmess') outbound = vmessOutbound(server)
@@ -169,9 +167,7 @@ function generateConfig(server, opts = {}) {
       rules,
     },
     dns: {
-      servers: adBlock
-        ? ['94.140.14.14', '94.140.15.15', '1.1.1.1']  // AdGuard DNS — blocks ads & trackers
-        : ['8.8.8.8', '8.8.4.4', '1.1.1.1'],
+      servers: ['8.8.8.8', '8.8.4.4', '1.1.1.1'],
     },
   }
 }
