@@ -241,6 +241,7 @@ function setupIPC() {
 
   ipcMain.handle('settings:get-logs', () => logger.getLogs())
   ipcMain.handle('settings:clear-logs', () => { logger.clearLogs(); return true })
+  ipcMain.handle('settings:open-log-file', () => shell.openPath(logger.getLogFilePath()))
 
   ipcMain.handle('settings:get-kill-switch', () => settingsManager.get('killSwitch') === true)
   ipcMain.handle('settings:set-kill-switch', (_, enabled) => {

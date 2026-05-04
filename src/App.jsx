@@ -40,6 +40,7 @@ export default function App() {
   const [planeMode, setPlaneMode] = useState(null)
   const [firstLaunch, setFirstLaunch] = useState(false)
   const [expiryWarning, setExpiryWarning] = useState(null)
+  const [connectError, setConnectError] = useState(null)
   const prevStatus = useRef('disconnected')
   const planeTimer = useRef(null)
 
@@ -109,7 +110,8 @@ export default function App() {
     const result = await window.api.vpnConnect(targetId)
     if (!result.success) {
       setVpnStatus('error')
-      setTimeout(() => setVpnStatus('disconnected'), 2500)
+      setConnectError(result.error || 'Неизвестная ошибка')
+      setTimeout(() => { setVpnStatus('disconnected'); setConnectError(null) }, 5000)
     }
   }, [vpnStatus, activeServerId, allServers])
 
@@ -236,6 +238,9 @@ export default function App() {
           <div className={`status-text-big status-text-big--${vpnStatus}`}>
             {statusLabel}
           </div>
+          {connectError && (
+            <span className="status-error-detail">{connectError}</span>
+          )}
           <span className="status-sub">
             {vpnStatus === 'connected' && activeServer
               ? activeServer.remark?.replace(/[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF]\s*/g, '').trim()

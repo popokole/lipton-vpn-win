@@ -297,6 +297,9 @@ export default function SettingsPanel({ onClose }) {
                 <button className="settings-action-btn" onClick={handleCopyLogs} disabled={!logs.length}>
                   {copied ? '✓' : 'Копировать'}
                 </button>
+                <button className="settings-action-btn" onClick={() => window.api.openLogFile()}>
+                  Файл
+                </button>
                 <button className="settings-action-btn settings-action-btn--danger"
                   onClick={handleClearLogs} disabled={!logs.length}>
                   Очистить

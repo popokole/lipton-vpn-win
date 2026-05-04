@@ -439,6 +439,14 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
   letter-spacing: 0.01em;
   transition: opacity 0.3s;
 }
+.status-error-detail {
+  font-size: 11px;
+  color: var(--red);
+  text-align: center;
+  max-width: 280px;
+  word-break: break-word;
+  opacity: 0.85;
+}
 
 /* ─── Divider ────────────────────────────────────────────────────────────── */
 .divider {

@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('api', {
   setBypassRu:   (enabled) => ipcRenderer.invoke('settings:set-bypass-ru', enabled),
   getLogs:              ()       => ipcRenderer.invoke('settings:get-logs'),
   clearLogs:            ()       => ipcRenderer.invoke('settings:clear-logs'),
+  openLogFile:          ()       => ipcRenderer.invoke('settings:open-log-file'),
   resetProfile:         ()       => ipcRenderer.invoke('settings:reset-profile'),
   getBypassDomains:     ()       => ipcRenderer.invoke('settings:get-bypass-domains'),
   addBypassDomain:      (domain) => ipcRenderer.invoke('settings:add-bypass-domain', domain),
