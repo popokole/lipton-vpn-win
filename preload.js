@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('sub:updated', (_, data) => cb(data))
     return () => ipcRenderer.removeAllListeners('sub:updated')
   },
+  onSubAddResult: (cb) => {
+    ipcRenderer.on('sub:add-result', (_, data) => cb(data))
+    return () => ipcRenderer.removeAllListeners('sub:add-result')
+  },
 
   // Updater
   onUpdateStatus: (cb) => {

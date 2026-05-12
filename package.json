@@ -1,6 +1,6 @@
 {
   "name": "lipton-vpn",
-  "version": "1.2.8",
+  "version": "1.2.9",
   "description": "Lipton VPN - Быстро и безопасно",
   "main": "main.js",
   "scripts": {
@@ -29,7 +29,7 @@
     "productName": "Lipton VPN",
     "copyright": "Copyright © 2025 Lipton VPN",
     "directories": {
-      "output": "release"
+      "output": "C:\\lipton-release"
     },
     "win": {
       "target": [

@@ -202,14 +202,21 @@ async function handleDeepLink(rawUrl) {
     if (result.success) {
       settingsManager.set('subscriptions', result.subscriptions)
       mainWindow?.webContents.send('sub:updated', result.subscriptions)
+      mainWindow?.webContents.send('sub:add-result', { success: true })
       mainWindow?.show()
       mainWindow?.focus()
       console.log('[DeepLink] Подписка добавлена успешно')
     } else {
       console.warn('[DeepLink] Ошибка:', result.error)
+      mainWindow?.show()
+      mainWindow?.focus()
+      mainWindow?.webContents.send('sub:add-result', { success: false, error: result.error })
     }
   } catch (err) {
     console.error('[DeepLink] Исключение:', err.message)
+    mainWindow?.show()
+    mainWindow?.focus()
+    mainWindow?.webContents.send('sub:add-result', { success: false, error: err.message })
   }
 }
 

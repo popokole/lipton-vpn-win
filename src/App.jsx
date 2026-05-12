@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useReducer } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TitleBar from './components/TitleBar'
 import ConnectButton from './components/ConnectButton'
 import ServerList from './components/ServerList'
@@ -6,6 +6,20 @@ import SubscriptionPanel from './components/SubscriptionPanel'
 import SettingsPanel from './components/SettingsPanel'
 import PlanesOverlay from './components/PlanesOverlay'
 import WelcomeScreen from './components/WelcomeScreen'
+
+function Toast({ toasts, onRemove }) {
+  if (!toasts.length) return null
+  return (
+    <div className="toast-container">
+      {toasts.map(t => (
+        <div key={t.id} className={`toast toast--${t.type}`}>
+          <span className="toast-msg">{t.message}</span>
+          <button className="toast-close" onClick={() => onRemove(t.id)}>✕</button>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const COMING_SOON = [
   { icon: '📊', label: 'Статистика' },
@@ -45,8 +59,19 @@ export default function App() {
   const [firstLaunch, setFirstLaunch] = useState(false)
   const [expiryWarning, setExpiryWarning] = useState(null)
   const [connectError, setConnectError] = useState(null)
+  const [toasts, setToasts] = useState([])
   const prevStatus = useRef('disconnected')
   const planeTimer = useRef(null)
+
+  const addToast = useCallback((message, type = 'success') => {
+    const id = Date.now() + Math.random()
+    setToasts(prev => [...prev, { id, message, type }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500)
+  }, [])
+
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -79,8 +104,12 @@ export default function App() {
     const offExp = window.api.onExpiryWarning(data => {
       setExpiryWarning(data)
     })
-    return () => { offVpn?.(); offSub?.(); offUpd?.(); offExp?.() }
-  }, [])
+    const offAddResult = window.api.onSubAddResult?.(data => {
+      if (data.success) addToast('Подписка добавлена', 'success')
+      else addToast(data.error || 'Ошибка добавления подписки', 'error')
+    })
+    return () => { offVpn?.(); offSub?.(); offUpd?.(); offExp?.(); offAddResult?.() }
+  }, [addToast])
 
   useEffect(() => {
     const prev = prevStatus.current
@@ -131,6 +160,20 @@ export default function App() {
     }
   }, [vpnStatus])
 
+  const handleSubAdd = useCallback(async (url) => {
+    const result = await window.api.subAdd(url)
+    if (result.success) addToast('Подписка добавлена', 'success')
+    else addToast(result.error || 'Ошибка добавления', 'error')
+    return result
+  }, [addToast])
+
+  const handleSubRemove = useCallback(async (id) => {
+    const result = await window.api.subRemove(id)
+    if (result.success) addToast('Подписка удалена', 'success')
+    else addToast(result.error || 'Ошибка удаления', 'error')
+    return result
+  }, [addToast])
+
   const handlePingAll = useCallback(async () => {
     if (pinging) return
     setPinging(true)
@@ -171,6 +214,7 @@ export default function App() {
   return (
     <div className="app">
       <TitleBar onSettings={() => setShowSettings(true)} />
+      <Toast toasts={toasts} onRemove={removeToast} />
       {showSettings && (
         <SettingsPanel
           onClose={() => setShowSettings(false)}
@@ -266,8 +310,8 @@ export default function App() {
 
         <SubscriptionPanel
           subscriptions={subscriptions}
-          onAdd={url => window.api.subAdd(url)}
-          onRemove={id => window.api.subRemove(id)}
+          onAdd={handleSubAdd}
+          onRemove={handleSubRemove}
           onRefresh={id => window.api.subRefresh(id)}
         />
 
