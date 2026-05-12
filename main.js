@@ -186,7 +186,12 @@ function refreshTray(status) {
 // ─── Deep link ────────────────────────────────────────────────────────────────
 
 async function handleDeepLink(rawUrl) {
-  const subUrl = rawUrl.replace(/^liptonapp:\/{0,2}/, '')
+  let subUrl
+  if (/^lipton:\/\/add\//i.test(rawUrl)) {
+    subUrl = rawUrl.replace(/^lipton:\/\/add\//i, '')
+  } else {
+    subUrl = rawUrl.replace(/^liptonapp:\/{0,2}/, '')
+  }
   if (!subUrl.startsWith('http')) {
     console.warn('[DeepLink] Неверный URL:', rawUrl)
     return
@@ -657,13 +662,14 @@ function checkSubscriptionExpiry() {
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 
 app.setAsDefaultProtocolClient('liptonapp')
+app.setAsDefaultProtocolClient('lipton')
 
 app.whenReady().then(async () => {
   createWindow()
   createTray()
   setupIPC()
 
-  const deepLinkArg = process.argv.slice(1).find(a => a.startsWith('liptonapp:'))
+  const deepLinkArg = process.argv.slice(1).find(a => a.startsWith('liptonapp:') || a.startsWith('lipton:'))
   if (deepLinkArg) await handleDeepLink(deepLinkArg)
 
   // Init kill switch from saved settings
@@ -688,7 +694,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('second-instance', (event, argv) => {
-  const deepLink = argv.find(a => a.startsWith('liptonapp:'))
+  const deepLink = argv.find(a => a.startsWith('liptonapp:') || a.startsWith('lipton:'))
   if (deepLink) handleDeepLink(deepLink)
 
   if (mainWindow) {
