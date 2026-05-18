@@ -220,6 +220,11 @@ async function add(url) {
     return { success: false, error: 'Такая подписка уже добавлена' }
   }
 
+  const paidCount = subscriptions.filter(s => !s.isTrial).length
+  if (paidCount >= 1) {
+    return { success: false, error: 'Можно добавить только 1 платную подписку. Удалите текущую, чтобы добавить новую.' }
+  }
+
   const { servers, userInfo } = await fetchAndParse(url)
 
   const newSub = {

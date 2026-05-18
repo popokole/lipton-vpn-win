@@ -187,13 +187,18 @@ function refreshTray(status) {
 
 async function handleDeepLink(rawUrl) {
   let subUrl
-  if (/^lipton:\/\/add\//i.test(rawUrl)) {
+  if (/^liptonvpn:\/\/add\//i.test(rawUrl)) {
+    subUrl = rawUrl.replace(/^liptonvpn:\/\/add\//i, '')
+  } else if (/^lipton:\/\/add\//i.test(rawUrl)) {
     subUrl = rawUrl.replace(/^lipton:\/\/add\//i, '')
   } else {
     subUrl = rawUrl.replace(/^liptonapp:\/{0,2}/, '')
   }
   if (!subUrl.startsWith('http')) {
     console.warn('[DeepLink] Неверный URL:', rawUrl)
+    mainWindow?.show()
+    mainWindow?.focus()
+    mainWindow?.webContents.send('sub:add-result', { success: false, error: 'Неверная ссылка подписки' })
     return
   }
   console.log('[DeepLink] Добавление подписки:', subUrl)
@@ -670,13 +675,14 @@ function checkSubscriptionExpiry() {
 
 app.setAsDefaultProtocolClient('liptonapp')
 app.setAsDefaultProtocolClient('lipton')
+app.setAsDefaultProtocolClient('liptonvpn')
 
 app.whenReady().then(async () => {
   createWindow()
   createTray()
   setupIPC()
 
-  const deepLinkArg = process.argv.slice(1).find(a => a.startsWith('liptonapp:') || a.startsWith('lipton:'))
+  const deepLinkArg = process.argv.slice(1).find(a => a.startsWith('liptonapp:') || a.startsWith('lipton:') || a.startsWith('liptonvpn:'))
   if (deepLinkArg) await handleDeepLink(deepLinkArg)
 
   // Init kill switch from saved settings
@@ -701,7 +707,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('second-instance', (event, argv) => {
-  const deepLink = argv.find(a => a.startsWith('liptonapp:') || a.startsWith('lipton:'))
+  const deepLink = argv.find(a => a.startsWith('liptonapp:') || a.startsWith('lipton:') || a.startsWith('liptonvpn:'))
   if (deepLink) handleDeepLink(deepLink)
 
   if (mainWindow) {
