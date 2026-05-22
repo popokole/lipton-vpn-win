@@ -32,6 +32,21 @@ function streamSettings(s) {
     ss.httpSettings = { path: s.path || '/', host: s.host ? [s.host] : [] }
   } else if (s.network === 'httpupgrade') {
     ss.httpupgradeSettings = { path: s.path || '/', host: s.host || s.sni }
+  } else if (s.network === 'xhttp') {
+    ss.xhttpSettings = {
+      path: s.path || '/',
+      host: s.host || '',
+      mode: 'auto',
+    }
+  } else if (s.network === 'splithttp') {
+    ss.splithttpSettings = {
+      path: s.path || '/',
+      host: s.host || '',
+    }
+  } else if (s.network === 'tcp' && s.host) {
+    ss.tcpSettings = {
+      header: { type: 'http', request: { path: [s.path || '/'], headers: { Host: [s.host] } } },
+    }
   }
 
   return ss
