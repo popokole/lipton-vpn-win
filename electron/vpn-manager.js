@@ -4,10 +4,12 @@ const fs = require('fs')
 const os = require('os')
 const { generateConfig } = require('./xray-config')
 const logger = require('./logger')
+const tunManager = require('./tun-manager')
 
 let xrayProc = null
 let status = 'disconnected'
 let killSwitchEnabled = false
+let tunModeActive = false
 
 // ─── xray binary / geo-data paths ────────────────────────────────────────────
 
@@ -126,13 +128,26 @@ async function connect(server, opts = {}) {
 
     let resolved = false
 
-    const done = (success, error) => {
+    const done = async (success, error) => {
       if (resolved) return
       resolved = true
       if (success) {
         status = 'connected'
-        setProxy('127.0.0.1', opts.httpPort || 10809)
-        console.log('[VPN] Подключено успешно')
+        if (opts.tunMode) {
+          try {
+            await tunManager.start(server.address, opts.socksPort || 10808)
+            tunModeActive = true
+            console.log('[VPN] Подключено (TUN mode)')
+          } catch (e) {
+            console.error('[TUN] Ошибка запуска TUN, откат на proxy:', e.message)
+            setProxy('127.0.0.1', opts.httpPort || 10809)
+            tunModeActive = false
+          }
+        } else {
+          setProxy('127.0.0.1', opts.httpPort || 10809)
+          tunModeActive = false
+          console.log('[VPN] Подключено (proxy mode)')
+        }
         resolve({ success: true })
       } else {
         status = 'error'
@@ -178,8 +193,11 @@ async function connect(server, opts = {}) {
       xrayProc = null
       if (status === 'connected') {
         status = 'disconnected'
-        if (killSwitchEnabled) {
-          // Block all traffic via fake proxy port
+        if (tunModeActive) {
+          tunModeActive = false
+          tunManager.stop().catch(() => {})
+          opts.onUnexpectedDisconnect?.()
+        } else if (killSwitchEnabled) {
           setProxy('127.0.0.1', 1)
           console.log('[Kill Switch] Активирован — трафик заблокирован')
           opts.onKillSwitch?.()
@@ -196,7 +214,12 @@ async function connect(server, opts = {}) {
 }
 
 async function disconnect() {
-  clearProxy()
+  if (tunModeActive) {
+    tunModeActive = false
+    await tunManager.stop()
+  } else {
+    clearProxy()
+  }
   if (!xrayProc) { status = 'disconnected'; return }
   status = 'disconnecting'
   console.log('[VPN] Отключение...')

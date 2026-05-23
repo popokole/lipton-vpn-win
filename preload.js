@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld('api', {
   setKillSwitch:        (v)      => ipcRenderer.invoke('settings:set-kill-switch', v),
   getAutoConnect:       ()       => ipcRenderer.invoke('settings:get-auto-connect'),
   setAutoConnect:       (v)      => ipcRenderer.invoke('settings:set-auto-connect', v),
+  getTunMode:           ()       => ipcRenderer.invoke('settings:get-tun-mode'),
+  setTunMode:           (v)      => ipcRenderer.invoke('settings:set-tun-mode', v),
   flushDns:             ()       => ipcRenderer.invoke('settings:flush-dns'),
   isFirstLaunch:        ()       => ipcRenderer.invoke('settings:is-first-launch'),
   completeOnboarding:   ()       => ipcRenderer.invoke('settings:complete-onboarding'),

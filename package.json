@@ -1,6 +1,6 @@
 {
   "name": "lipton-vpn",
-  "version": "1.2.11",
+  "version": "1.2.12",
   "description": "Lipton VPN - Быстро и безопасно",
   "main": "main.js",
   "scripts": {
@@ -47,7 +47,7 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
       "oneClick": true,

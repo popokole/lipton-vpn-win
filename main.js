@@ -277,6 +277,12 @@ function setupIPC() {
     console.log(`[Settings] Автоподключение: ${enabled ? 'вкл' : 'выкл'}`)
   })
 
+  ipcMain.handle('settings:get-tun-mode', () => settingsManager.get('tunMode') === true)
+  ipcMain.handle('settings:set-tun-mode', (_, enabled) => {
+    settingsManager.set('tunMode', enabled)
+    console.log(`[Settings] TUN mode: ${enabled ? 'вкл' : 'выкл'}`)
+  })
+
   ipcMain.handle('settings:flush-dns', async () => {
     try {
       const { execSync } = require('child_process')
@@ -354,6 +360,7 @@ function setupIPC() {
         dataDir: settingsManager.getDataDir(),
         bypassRu: settings.bypassRu !== false,
         bypassDomains: settings.bypassDomains || [],
+        tunMode: settings.tunMode === true,
 
         onUnexpectedDisconnect: () => {
           settingsManager.set('activeServerId', null)
