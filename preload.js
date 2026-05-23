@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('api', {
   getTunMode:           ()       => ipcRenderer.invoke('settings:get-tun-mode'),
   setTunMode:           (v)      => ipcRenderer.invoke('settings:set-tun-mode', v),
   flushDns:             ()       => ipcRenderer.invoke('settings:flush-dns'),
+  resetDns:             ()       => ipcRenderer.invoke('settings:reset-dns'),
+  resetNetwork:         ()       => ipcRenderer.invoke('settings:reset-network'),
   isFirstLaunch:        ()       => ipcRenderer.invoke('settings:is-first-launch'),
   completeOnboarding:   ()       => ipcRenderer.invoke('settings:complete-onboarding'),
   onExpiryWarning: (cb) => {

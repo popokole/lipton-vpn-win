@@ -256,7 +256,7 @@ function pingServer(address, port) {
     const sock = new net.Socket()
     sock.setTimeout(3000)
     sock.connect(port, address, () => { sock.destroy(); resolve(Date.now() - start) })
-    sock.on('error', () => resolve(null))
+    sock.on('error', () => { sock.destroy(); resolve(null) })
     sock.on('timeout', () => { sock.destroy(); resolve(null) })
   })
 }

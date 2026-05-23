@@ -8,7 +8,11 @@ export default function SettingsPanel({ onClose }) {
   const [killSwitch,  setKillSwitch]  = useState(false)
   const [autoConnect, setAutoConnect] = useState(false)
   const [tunMode,     setTunMode]     = useState(false)
-  const [flushing,    setFlushing]    = useState(false)
+  const [flushing,       setFlushing]       = useState(false)
+  const [resettingDns,   setResettingDns]   = useState(false)
+  const [resettingNet,   setResettingNet]   = useState(false)
+  const [confirmNetReset, setConfirmNetReset] = useState(false)
+  const [netResetDone,   setNetResetDone]   = useState(false)
   const [logs, setLogs]             = useState([])
   const [logLoading, setLogLoading] = useState(false)
   const [resetting, setResetting]     = useState(false)
@@ -82,6 +86,21 @@ export default function SettingsPanel({ onClose }) {
     setFlushing(true)
     await window.api.flushDns()
     setTimeout(() => setFlushing(false), 1500)
+  }
+
+  async function handleResetDns() {
+    setResettingDns(true)
+    await window.api.resetDns()
+    setTimeout(() => setResettingDns(false), 2000)
+  }
+
+  async function handleResetNetwork() {
+    setResettingNet(true)
+    setConfirmNetReset(false)
+    await window.api.resetNetwork()
+    setResettingNet(false)
+    setNetResetDone(true)
+    setTimeout(() => setNetResetDone(false), 6000)
   }
 
   async function handleClearLogs() {
@@ -317,6 +336,62 @@ export default function SettingsPanel({ onClose }) {
                   ))
               }
             </div>
+          </div>
+
+          {/* Network reset */}
+          <div className="settings-section">
+            <span className="settings-section-title">Сброс сети</span>
+            <span className="settings-reset-hint" style={{ marginBottom: 10, display: 'block' }}>
+              Если другие VPN оставили мусор в настройках
+            </span>
+
+            <button className="settings-flush-btn" onClick={handleResetDns} disabled={resettingDns}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 8v4l3 3"/>
+              </svg>
+              {resettingDns ? '✓ DNS сброшен на автоматический' : 'Сбросить DNS'}
+            </button>
+            <span className="settings-reset-hint">
+              Очищает кэш и возвращает DNS на автоматический (DHCP)
+            </span>
+
+            {netResetDone ? (
+              <div className="settings-reset-confirm">
+                <span className="settings-reset-confirm-text" style={{ color: 'var(--green)' }}>
+                  ✓ Готово — перезагрузи компьютер для полного применения
+                </span>
+              </div>
+            ) : confirmNetReset ? (
+              <div className="settings-reset-confirm">
+                <span className="settings-reset-confirm-text">
+                  Сбросит Winsock, TCP/IP стек, все маршруты и DNS. Нужна перезагрузка. Уверен?
+                </span>
+                <div className="settings-reset-confirm-btns">
+                  <button className="settings-reset-confirm-yes" onClick={handleResetNetwork} disabled={resettingNet}>
+                    {resettingNet ? 'Сброс...' : 'Да, сбросить'}
+                  </button>
+                  <button className="settings-reset-confirm-no" onClick={() => setConfirmNetReset(false)}>
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="settings-reset-btn" onClick={() => setConfirmNetReset(true)} disabled={resettingNet}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 1 0 .49-3.87"/>
+                </svg>
+                Полный сброс сети
+              </button>
+            )}
+            {!confirmNetReset && !netResetDone && (
+              <span className="settings-reset-hint">
+                Winsock + TCP/IP стек + маршруты + DNS — фиксит конфликты с другими VPN
+              </span>
+            )}
           </div>
 
           {/* Reset proxy */}

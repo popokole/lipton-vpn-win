@@ -294,6 +294,84 @@ function setupIPC() {
     }
   })
 
+  ipcMain.handle('settings:reset-dns', async () => {
+    try {
+      const { execSync } = require('child_process')
+
+      // Flush DNS cache
+      try { execSync('ipconfig /flushdns', { stdio: 'ignore', timeout: 5000 }) } catch {}
+
+      // Get all connected adapters except our TUN interface
+      let adapters = []
+      try {
+        const out = execSync(
+          `powershell -NoProfile -NonInteractive -Command "Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.Name -ne 'LiptonVPN'} | Select-Object -ExpandProperty Name"`,
+          { encoding: 'utf8', timeout: 8000, windowsHide: true }
+        )
+        adapters = out.split('\n').map(s => s.trim()).filter(Boolean)
+      } catch {}
+
+      // Reset DNS to DHCP on each adapter
+      for (const name of adapters) {
+        try { execSync(`netsh interface ip set dns name="${name}" source=dhcp`, { stdio: 'ignore', timeout: 4000, windowsHide: true }) } catch {}
+        try { execSync(`netsh interface ipv6 set dns name="${name}" source=dhcp`, { stdio: 'ignore', timeout: 4000, windowsHide: true }) } catch {}
+      }
+
+      console.log(`[Settings] DNS сброшен на DHCP (${adapters.length} адаптеров), кэш очищен`)
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  ipcMain.handle('settings:reset-network', async () => {
+    try {
+      const { execSync } = require('child_process')
+
+      // 1. Disconnect VPN and clean up TUN/proxy
+      await vpnManager.disconnect()
+      settingsManager.set('activeServerId', null)
+      refreshTray('disconnected')
+      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+
+      // 2. Force-clear proxy in registry (in case clearProxy was already called but other VPN left garbage)
+      const REG_NET = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
+      try { execSync(`reg add "${REG_NET}" /v ProxyEnable /t REG_DWORD /d 0 /f`, { stdio: 'ignore' }) } catch {}
+      try { execSync(`reg delete "${REG_NET}" /v ProxyServer /f`, { stdio: 'ignore' }) } catch {}
+      try { execSync(`reg delete "${REG_NET}" /v AutoConfigURL /f`, { stdio: 'ignore' }) } catch {}
+
+      // 3. Remove TUN split-routes (ours and leftovers from other VPNs)
+      try { execSync('route delete 0.0.0.0 mask 128.0.0.0', { stdio: 'ignore', timeout: 3000 }) } catch {}
+      try { execSync('route delete 128.0.0.0 mask 128.0.0.0', { stdio: 'ignore', timeout: 3000 }) } catch {}
+
+      // 4. Flush DNS + reset to DHCP
+      try { execSync('ipconfig /flushdns', { stdio: 'ignore', timeout: 5000 }) } catch {}
+      let adapters = []
+      try {
+        const out = execSync(
+          `powershell -NoProfile -NonInteractive -Command "Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.Name -ne 'LiptonVPN'} | Select-Object -ExpandProperty Name"`,
+          { encoding: 'utf8', timeout: 8000, windowsHide: true }
+        )
+        adapters = out.split('\n').map(s => s.trim()).filter(Boolean)
+      } catch {}
+      for (const name of adapters) {
+        try { execSync(`netsh interface ip set dns name="${name}" source=dhcp`, { stdio: 'ignore', timeout: 4000, windowsHide: true }) } catch {}
+        try { execSync(`netsh interface ipv6 set dns name="${name}" source=dhcp`, { stdio: 'ignore', timeout: 4000, windowsHide: true }) } catch {}
+      }
+
+      // 5. Reset Winsock and TCP/IP stack (requires restart to fully apply)
+      try { execSync('netsh winsock reset', { stdio: 'ignore', timeout: 10000, windowsHide: true }) } catch {}
+      try { execSync('netsh int ip reset', { stdio: 'ignore', timeout: 10000, windowsHide: true }) } catch {}
+      try { execSync('netsh int ipv6 reset', { stdio: 'ignore', timeout: 10000, windowsHide: true }) } catch {}
+
+      console.log('[Settings] Полный сброс сети выполнен')
+      return { success: true, needsRestart: true }
+    } catch (e) {
+      console.error('[Settings] Ошибка сброса сети:', e.message)
+      return { success: false, error: e.message }
+    }
+  })
+
   ipcMain.handle('settings:is-first-launch', () => settingsManager.get('firstLaunch') !== false)
   ipcMain.handle('settings:complete-onboarding', () => {
     settingsManager.set('firstLaunch', false)
