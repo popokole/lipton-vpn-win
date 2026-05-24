@@ -101,11 +101,14 @@ async function start(serverAddress, socksPort = 10808) {
   cmd(`netsh interface ip set address name="${TUN_NAME}" static ${TUN_IP} ${TUN_MASK}`)
   await new Promise(r => setTimeout(r, 600))
 
+  // Reduce MTU to avoid fragmentation through VPN tunnel (fixes CS2/gaming UDP)
+  cmd(`netsh interface ipv4 set subinterface "${TUN_NAME}" mtu=1380 store=active`)
+
   // Split default route through TUN (two /1 entries override default gateway)
   cmd(`route add 0.0.0.0   mask 128.0.0.0 ${TUN_GW} metric 5`)
   cmd(`route add 128.0.0.0 mask 128.0.0.0 ${TUN_GW} metric 5`)
 
-  console.log('[TUN] TUN mode активирован — весь трафик (TCP+UDP) через VPN')
+  console.log('[TUN] TUN mode активирован — весь трафик (TCP+UDP) через VPN, MTU=1380')
 }
 
 async function stop() {
