@@ -273,10 +273,13 @@ function setupIPC() {
         )
         fs.unlinkSync(scriptPath)
       } else {
-        execSync(
-          `powershell -NoProfile -NonInteractive -Command "Unregister-ScheduledTask -TaskName 'LiptonVPN Autostart' -Confirm:$false -ErrorAction SilentlyContinue"`,
-          { stdio: 'ignore', timeout: 6000, windowsHide: true }
-        )
+        // Wrap in PS try/catch so exit code is always 0 even if task doesn't exist
+        try {
+          execSync(
+            `powershell -NoProfile -NonInteractive -Command "try { Unregister-ScheduledTask -TaskName 'LiptonVPN Autostart' -Confirm:$false -ErrorAction Stop } catch {}"`,
+            { stdio: 'ignore', timeout: 6000, windowsHide: true }
+          )
+        } catch { /* ignore */ }
         try { app.setLoginItemSettings({ openAtLogin: false }) } catch {}
       }
       console.log(`[Settings] Автозапуск: ${enabled ? 'вкл' : 'выкл'}`)
