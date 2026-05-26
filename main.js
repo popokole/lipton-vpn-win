@@ -239,8 +239,11 @@ function setupIPC() {
     if (isDev) return false
     try {
       const { execSync } = require('child_process')
-      execSync('schtasks /query /tn "LiptonVPN Autostart" /fo LIST', { stdio: 'ignore', timeout: 5000, windowsHide: true })
-      return true
+      const out = execSync(
+        `powershell -NoProfile -NonInteractive -Command "Get-ScheduledTask -TaskName 'LiptonVPN Autostart' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty State"`,
+        { encoding: 'utf8', timeout: 6000, windowsHide: true }
+      ).trim()
+      return out !== '' && out !== 'Disabled'
     } catch {
       return false
     }
@@ -249,16 +252,31 @@ function setupIPC() {
   ipcMain.handle('settings:set-autostart', (_, enabled) => {
     if (isDev) return
     const { execSync } = require('child_process')
+    const os = require('os')
     try {
       if (enabled) {
-        const exePath = process.execPath
+        const exePath  = process.execPath
+        const username = os.userInfo().username
+        // Write PowerShell script to temp file to avoid quoting issues
+        const script = [
+          `$action    = New-ScheduledTaskAction -Execute '${exePath.replace(/'/g, "''")}'`,
+          `$trigger   = New-ScheduledTaskTrigger -AtLogOn -User '${username}'`,
+          `$principal = New-ScheduledTaskPrincipal -UserId '${username}' -RunLevel Highest -LogonType Interactive`,
+          `$settings  = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan) -DisallowStartIfOnBatteries $false -StopIfGoingOnBatteries $false`,
+          `Register-ScheduledTask -TaskName 'LiptonVPN Autostart' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null`,
+        ].join('\r\n')
+        const scriptPath = path.join(os.tmpdir(), 'lipton-autostart.ps1')
+        fs.writeFileSync(scriptPath, script, 'utf-8')
         execSync(
-          `schtasks /create /tn "LiptonVPN Autostart" /tr "\\"${exePath}\\"" /sc onlogon /rl highest /f`,
-          { stdio: 'ignore', timeout: 8000, windowsHide: true }
+          `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptPath}"`,
+          { stdio: 'ignore', timeout: 12000, windowsHide: true }
         )
+        fs.unlinkSync(scriptPath)
       } else {
-        try { execSync('schtasks /delete /tn "LiptonVPN Autostart" /f', { stdio: 'ignore', timeout: 5000, windowsHide: true }) } catch {}
-        // Также убираем старую запись в реестре если осталась с прошлых версий
+        execSync(
+          `powershell -NoProfile -NonInteractive -Command "Unregister-ScheduledTask -TaskName 'LiptonVPN Autostart' -Confirm:$false -ErrorAction SilentlyContinue"`,
+          { stdio: 'ignore', timeout: 6000, windowsHide: true }
+        )
         try { app.setLoginItemSettings({ openAtLogin: false }) } catch {}
       }
       console.log(`[Settings] Автозапуск: ${enabled ? 'вкл' : 'выкл'}`)
