@@ -237,13 +237,34 @@ function setupIPC() {
   // Settings
   ipcMain.handle('settings:get-autostart', () => {
     if (isDev) return false
-    return app.getLoginItemSettings().openAtLogin
+    try {
+      const { execSync } = require('child_process')
+      execSync('schtasks /query /tn "LiptonVPN Autostart" /fo LIST', { stdio: 'ignore', timeout: 5000, windowsHide: true })
+      return true
+    } catch {
+      return false
+    }
   })
 
   ipcMain.handle('settings:set-autostart', (_, enabled) => {
     if (isDev) return
-    app.setLoginItemSettings({ openAtLogin: enabled })
-    console.log(`[Settings] Автозапуск: ${enabled ? 'вкл' : 'выкл'}`)
+    const { execSync } = require('child_process')
+    try {
+      if (enabled) {
+        const exePath = process.execPath
+        execSync(
+          `schtasks /create /tn "LiptonVPN Autostart" /tr "\\"${exePath}\\"" /sc onlogon /rl highest /f`,
+          { stdio: 'ignore', timeout: 8000, windowsHide: true }
+        )
+      } else {
+        try { execSync('schtasks /delete /tn "LiptonVPN Autostart" /f', { stdio: 'ignore', timeout: 5000, windowsHide: true }) } catch {}
+        // Также убираем старую запись в реестре если осталась с прошлых версий
+        try { app.setLoginItemSettings({ openAtLogin: false }) } catch {}
+      }
+      console.log(`[Settings] Автозапуск: ${enabled ? 'вкл' : 'выкл'}`)
+    } catch (e) {
+      console.error('[Settings] Ошибка автозапуска:', e.message)
+    }
   })
 
   ipcMain.handle('settings:get-bypass-ru', () => {
