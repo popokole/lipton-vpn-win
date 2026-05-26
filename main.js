@@ -268,7 +268,7 @@ function setupIPC() {
           `$action    = New-ScheduledTaskAction -Execute '${safePath}'`,
           `$trigger   = New-ScheduledTaskTrigger -AtLogOn -User '${username}'`,
           `$principal = New-ScheduledTaskPrincipal -UserId '${username}' -RunLevel Highest -LogonType Interactive`,
-          `$settings  = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan) -DisallowStartIfOnBatteries $false -StopIfGoingOnBatteries $false`,
+          `$settings  = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan)`,
           `$task = Register-ScheduledTask -TaskName 'LiptonVPN Autostart' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force`,
           `Write-Output "OK state=$($task.State) path=$($task.TaskPath)"`,
         ].join('\r\n')
