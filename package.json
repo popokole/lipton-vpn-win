@@ -1,6 +1,6 @@
 {
   "name": "lipton-vpn",
-  "version": "1.2.17",
+  "version": "1.2.18",
   "description": "Lipton VPN - Быстро и безопасно",
   "main": "main.js",
   "scripts": {
