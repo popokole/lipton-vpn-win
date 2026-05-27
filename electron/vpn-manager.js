@@ -69,10 +69,11 @@ function clearProxy() {
 
 function notifyWininet() {
   try {
-    execSync(
-      `powershell -WindowStyle Hidden -Command "$t=Add-Type -PassThru -TypeDefinition 'using System;using System.Runtime.InteropServices;public class W{[DllImport(\\"wininet.dll\\")]public static extern bool InternetSetOption(IntPtr a,int b,IntPtr c,int d);}';$t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0);$t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0)"`,
-      { stdio: 'ignore', timeout: 4000 }
-    )
+    const { spawn } = require('child_process')
+    spawn('powershell', [
+      '-WindowStyle', 'Hidden', '-Command',
+      `$t=Add-Type -PassThru -TypeDefinition 'using System;using System.Runtime.InteropServices;public class W{[DllImport(\\"wininet.dll\\")]public static extern bool InternetSetOption(IntPtr a,int b,IntPtr c,int d);}';$t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0);$t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0)`,
+    ], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
   } catch { /* non-critical */ }
 }
 

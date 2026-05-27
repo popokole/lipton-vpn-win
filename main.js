@@ -235,64 +235,52 @@ function setupIPC() {
   ipcMain.handle('app:open-external', (_, url) => shell.openExternal(url))
 
   // Settings
+  // Autostart: cached in settings JSON for instant reads — no PowerShell on open
   ipcMain.handle('settings:get-autostart', () => {
     if (isDev) return false
-    try {
-      const { execSync } = require('child_process')
-      const out = execSync(
-        `powershell -NoProfile -NonInteractive -Command "try { $t = Get-ScheduledTask -TaskName 'LiptonVPN Autostart' -ErrorAction Stop; $t.State.ToString() } catch { 'none' }"`,
-        { encoding: 'utf8', timeout: 6000, windowsHide: true }
-      ).trim()
-      console.log(`[Autostart] Статус задачи: "${out}"`)
-      return out !== 'none' && out !== 'Disabled' && out !== ''
-    } catch (e) {
-      console.error('[Autostart] get-autostart error:', e.message)
-      return false
-    }
+    return settingsManager.get('autostart') === true
   })
 
   ipcMain.handle('settings:set-autostart', (_, enabled) => {
     if (isDev) return
-    const { execSync } = require('child_process')
+    settingsManager.set('autostart', enabled)
+    console.log(`[Settings] Автозапуск: ${enabled ? 'вкл' : 'выкл'}`)
+
+    // Task Scheduler work is async — returns immediately, doesn't block UI
+    const { exec } = require('child_process')
     const os = require('os')
 
     if (enabled) {
-      try {
-        const exePath  = process.execPath
-        const username = os.userInfo().username
-        console.log(`[Autostart] Включить: exe="${exePath}" user="${username}"`)
-
-        const safePath = exePath.replace(/'/g, "''")
-        const script = [
-          `$ErrorActionPreference = 'Stop'`,
-          `$action    = New-ScheduledTaskAction -Execute '${safePath}'`,
-          `$trigger   = New-ScheduledTaskTrigger -AtLogOn -User '${username}'`,
-          `$principal = New-ScheduledTaskPrincipal -UserId '${username}' -RunLevel Highest -LogonType Interactive`,
-          `$settings  = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan)`,
-          `$task = Register-ScheduledTask -TaskName 'LiptonVPN Autostart' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force`,
-          `Write-Output "OK state=$($task.State) path=$($task.TaskPath)"`,
-        ].join('\r\n')
-
-        const scriptPath = path.join(os.tmpdir(), 'lipton-autostart.ps1')
-        fs.writeFileSync(scriptPath, `﻿${script}`, 'utf-8')
-        const out = execSync(
-          `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptPath}"`,
-          { encoding: 'utf8', timeout: 12000, windowsHide: true }
-        ).trim()
-        try { fs.unlinkSync(scriptPath) } catch {}
-        console.log(`[Autostart] Результат регистрации: ${out}`)
-      } catch (e) {
-        console.error('[Autostart] Ошибка включения:', e.message)
-      }
+      const exePath  = process.execPath
+      const username = os.userInfo().username
+      const safePath = exePath.replace(/'/g, "''")
+      const script = [
+        `$ErrorActionPreference = 'Stop'`,
+        `$action    = New-ScheduledTaskAction -Execute '${safePath}'`,
+        `$trigger   = New-ScheduledTaskTrigger -AtLogOn -User '${username}'`,
+        `$principal = New-ScheduledTaskPrincipal -UserId '${username}' -RunLevel Highest -LogonType Interactive`,
+        `$settings  = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan)`,
+        `$task = Register-ScheduledTask -TaskName 'LiptonVPN Autostart' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force`,
+        `Write-Output "OK state=$($task.State)"`,
+      ].join('\r\n')
+      const scriptPath = path.join(os.tmpdir(), 'lipton-autostart.ps1')
+      try { fs.writeFileSync(scriptPath, script, 'utf-8') } catch {}
+      exec(
+        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptPath}"`,
+        { timeout: 15000, windowsHide: true },
+        (err, stdout) => {
+          try { fs.unlinkSync(scriptPath) } catch {}
+          if (err) { console.error('[Autostart] Ошибка:', err.message); settingsManager.set('autostart', false) }
+          else console.log('[Autostart] Задача создана:', stdout.trim())
+        }
+      )
     } else {
-      try {
-        execSync(
-          `powershell -NoProfile -NonInteractive -Command "try { Unregister-ScheduledTask -TaskName 'LiptonVPN Autostart' -Confirm:$false -ErrorAction Stop } catch {}"`,
-          { stdio: 'ignore', timeout: 6000, windowsHide: true }
-        )
-      } catch { /* ignore */ }
+      exec(
+        `powershell -NoProfile -NonInteractive -Command "try { Unregister-ScheduledTask -TaskName 'LiptonVPN Autostart' -Confirm:$false -ErrorAction Stop } catch {}"`,
+        { timeout: 8000, windowsHide: true },
+        (err) => { if (err) console.warn('[Autostart] Unregister:', err.message) }
+      )
       try { app.setLoginItemSettings({ openAtLogin: false }) } catch {}
-      console.log('[Autostart] Выключен')
     }
   })
 
