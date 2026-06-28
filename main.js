@@ -9,6 +9,7 @@ const logger = require('./electron/logger')
 const settingsManager = require('./electron/settings-manager')
 const subscriptionManager = require('./electron/subscription-manager')
 const vpnManager = require('./electron/vpn-manager')
+const apiClient = require('./electron/api-client')
 const { setupAutoUpdater } = require('./electron/auto-updater')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
@@ -222,6 +223,58 @@ async function handleDeepLink(rawUrl) {
     mainWindow?.show()
     mainWindow?.focus()
     mainWindow?.webContents.send('sub:add-result', { success: false, error: err.message })
+  }
+}
+
+// ─── Синхронизация подписки из аккаунта ────────────────────────────────────
+// Тянет /me/subscription и кладёт подписку как единственную управляемую запись.
+// Сервера парсятся из subscription_url (ссылку больше не вводят вручную).
+async function syncSubscription() {
+  if (!apiClient.isAuthed()) return { success: false, error: 'not-authed' }
+
+  let view
+  try {
+    view = await apiClient.getSubscription()
+  } catch (e) {
+    console.error('[Sync] /me/subscription:', e.message)
+    return { success: false, error: e.message, status: e.status }
+  }
+
+  const settings = settingsManager.getAll()
+  const others = (settings.subscriptions || []).filter(s => !s.managed)
+  const url = view?.subscription_url
+
+  if (!url) {
+    settingsManager.set('subscriptions', others)
+    mainWindow?.webContents.send('sub:updated', others)
+    mainWindow?.webContents.send('account:subscription', view || null)
+    return { success: true, hasAccess: false, view: view || null }
+  }
+
+  try {
+    const { servers, userInfo } = await subscriptionManager.fetchAndParse(url)
+    const prev = (settings.subscriptions || []).find(s => s.managed)
+    const managed = {
+      id: prev?.id || 'managed',
+      name: 'Lipton VPN',
+      url,
+      managed: true,
+      isTrial: view.status === 'trial',
+      addedAt: prev?.addedAt || Date.now(),
+      expiresAt: view.current_period_end ? new Date(view.current_period_end).getTime() : null,
+      lastUpdated: Date.now(),
+      servers,
+      userInfo,
+      status: view.status,
+    }
+    const subs = [managed, ...others]
+    settingsManager.set('subscriptions', subs)
+    mainWindow?.webContents.send('sub:updated', subs)
+    mainWindow?.webContents.send('account:subscription', view)
+    return { success: true, hasAccess: true, view }
+  } catch (e) {
+    console.error('[Sync] fetch subscription_url:', e.message)
+    return { success: false, error: e.message }
   }
 }
 
@@ -515,6 +568,56 @@ function setupIPC() {
     }
   })
 
+  // Auth
+  ipcMain.handle('auth:state', () => ({ authed: apiClient.isAuthed() }))
+
+  ipcMain.handle('auth:email-request', async (_, email) => {
+    try { await apiClient.emailRequest(email); return { success: true } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('auth:email-verify', async (_, { email, code }) => {
+    try {
+      await apiClient.emailVerify(email, code)
+      const sync = await syncSubscription()
+      return { success: true, sync }
+    } catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('auth:tg-init', async () => {
+    try { const r = await apiClient.tgInit(); return { success: true, ...r } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('auth:tg-verify', async (_, { linkToken, code }) => {
+    try {
+      await apiClient.tgVerify(linkToken, code)
+      const sync = await syncSubscription()
+      return { success: true, sync }
+    } catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('auth:device-exchange', async (_, code) => {
+    try {
+      await apiClient.deviceExchange(code)
+      const sync = await syncSubscription()
+      return { success: true, sync }
+    } catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('auth:logout', async () => {
+    try { await vpnManager.disconnect() } catch {}
+    settingsManager.set('activeServerId', null)
+    settingsManager.set('subscriptions', [])
+    await apiClient.logout()
+    refreshTray('disconnected')
+    mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+    mainWindow?.webContents.send('sub:updated', [])
+    return { success: true }
+  })
+
+  ipcMain.handle('account:sync', () => syncSubscription())
+
   // Subscriptions
   ipcMain.handle('sub:list', () => settingsManager.get('subscriptions') || [])
 
@@ -685,7 +788,8 @@ async function maybeAddTrial() {
 function checkTrialExpiry() {
   const settings = settingsManager.getAll()
   const subs = settings.subscriptions || []
-  const trial = subs.find(s => s.isTrial)
+  // управляемая подписка живёт по данным аккаунта (account:sync), её не трогаем
+  const trial = subs.find(s => s.isTrial && !s.managed)
   if (!trial) return
 
   if (Date.now() > trial.expiresAt) {
@@ -811,7 +915,10 @@ app.whenReady().then(async () => {
   // Init kill switch from saved settings
   vpnManager.setKillSwitch(settingsManager.get('killSwitch') === true)
 
-  await maybeAddTrial()
+  // Подписка теперь приходит из аккаунта — тянем при старте, если вошли.
+  if (apiClient.isAuthed()) {
+    syncSubscription().catch(err => console.error('[Startup] sync:', err.message))
+  }
 
   setInterval(checkTrialExpiry, 30_000)
   checkTrialExpiry()

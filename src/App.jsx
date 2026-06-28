@@ -6,6 +6,7 @@ import SubscriptionPanel from './components/SubscriptionPanel'
 import SettingsPanel from './components/SettingsPanel'
 import PlanesOverlay from './components/PlanesOverlay'
 import WelcomeScreen from './components/WelcomeScreen'
+import LoginScreen from './components/LoginScreen'
 
 function Toast({ toasts, onRemove }) {
   if (!toasts.length) return null
@@ -53,6 +54,7 @@ export default function App() {
   const [pinging, setPinging] = useState(false)
   const [version, setVersion] = useState('')
   const [loading, setLoading] = useState(true)
+  const [authed, setAuthed] = useState(null)
   const [update, setUpdate] = useState(null)
   const [updateAvailable, setUpdateAvailable] = useState(null)
   const [planeMode, setPlaneMode] = useState(null)
@@ -79,14 +81,31 @@ export default function App() {
       window.api.vpnStatus(),
       window.api.getVersion(),
       window.api.isFirstLaunch(),
-    ]).then(([subs, status, ver, fl]) => {
+      window.api.authState(),
+    ]).then(([subs, status, ver, fl, auth]) => {
       setSubscriptions(subs || [])
       setVpnStatus(status.status || 'disconnected')
       setActiveServerId(status.serverId || null)
       setVersion(ver || '')
       setFirstLaunch(!!fl)
+      setAuthed(!!auth?.authed)
       setLoading(false)
     })
+  }, [])
+
+  const handleLogin = useCallback(async () => {
+    setAuthed(true)
+    const subs = await window.api.subList()
+    setSubscriptions(subs || [])
+  }, [])
+
+  const handleLogout = useCallback(async () => {
+    await window.api.authLogout()
+    setSubscriptions([])
+    setActiveServerId(null)
+    setVpnStatus('disconnected')
+    setShowSettings(false)
+    setAuthed(false)
   }, [])
 
   useEffect(() => {
@@ -160,20 +179,6 @@ export default function App() {
     }
   }, [vpnStatus])
 
-  const handleSubAdd = useCallback(async (url) => {
-    const result = await window.api.subAdd(url)
-    if (result.success) addToast('Подписка добавлена', 'success')
-    else addToast(result.error || 'Ошибка добавления', 'error')
-    return result
-  }, [addToast])
-
-  const handleSubRemove = useCallback(async (id) => {
-    const result = await window.api.subRemove(id)
-    if (result.success) addToast('Подписка удалена', 'success')
-    else addToast(result.error || 'Ошибка удаления', 'error')
-    return result
-  }, [addToast])
-
   const handlePingAll = useCallback(async () => {
     if (pinging) return
     setPinging(true)
@@ -199,6 +204,15 @@ export default function App() {
     'kill-switch': 'Kill Switch активен',
   }[vpnStatus] || 'Отключено'
 
+  if (authed === false) {
+    return (
+      <div className="app">
+        <TitleBar />
+        <LoginScreen onLogin={handleLogin} />
+      </div>
+    )
+  }
+
   if (firstLaunch) {
     return (
       <div className="app">
@@ -219,6 +233,7 @@ export default function App() {
         <SettingsPanel
           onClose={() => setShowSettings(false)}
           onUpdateFound={() => setShowSettings(false)}
+          onLogout={handleLogout}
         />
       )}
 
@@ -310,9 +325,7 @@ export default function App() {
 
         <SubscriptionPanel
           subscriptions={subscriptions}
-          onAdd={handleSubAdd}
-          onRemove={handleSubRemove}
-          onRefresh={id => window.api.subRefresh(id)}
+          onRefresh={() => window.api.accountSync()}
         />
 
         {/* Coming soon */}

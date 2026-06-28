@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import BypassDomainsScreen from './BypassDomainsScreen'
 
-export default function SettingsPanel({ onClose }) {
+export default function SettingsPanel({ onClose, onLogout }) {
   const [bypassScreen, setBypassScreen] = useState(false)
   const [autostart,   setAutostart]   = useState(false)
   const [bypassRu,    setBypassRu]    = useState(true)
@@ -15,8 +15,6 @@ export default function SettingsPanel({ onClose }) {
   const [logs, setLogs]       = useState([])
   const [logLoading, setLogLoading] = useState(false)
   const [checkStatus, setCheckStatus] = useState(null)
-  const [trialState, setTrialState]   = useState(null) // null | 'loading' | 'ok' | 'error' | 'used' | 'claimed'
-  const [canTrial, setCanTrial]       = useState(false)
   const [copied, setCopied]         = useState(false)
   const [closing, setClosing]       = useState(false)
   const logsRef = useRef(null)
@@ -27,10 +25,6 @@ export default function SettingsPanel({ onClose }) {
     window.api.getKillSwitch().then(v  => setKillSwitch(!!v))
     window.api.getAutoConnect().then(v => setAutoConnect(!!v))
     window.api.getTunMode().then(v     => setTunMode(!!v))
-    window.api.canClaimTrial().then(r => {
-      if (r?.canClaim) setCanTrial(true)
-      else setTrialState('claimed')
-    })
     loadLogs()
   }, [])
 
@@ -106,18 +100,6 @@ export default function SettingsPanel({ onClose }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  async function handleClaimTrial() {
-    setTrialState('loading')
-    const result = await window.api.claimTrial()
-    if (result?.success) {
-      setTrialState('ok')
-      setCanTrial(false)
-    } else {
-      setTrialState(result?.error?.includes('сегодня') ? 'used' : 'error')
-      setTimeout(() => setTrialState(null), 3000)
-    }
-  }
-
   async function handleCheckUpdates() {
     setCheckStatus('checking')
     const result = await window.api.checkForUpdates()
@@ -180,32 +162,6 @@ export default function SettingsPanel({ onClose }) {
               {!checkStatus              && 'Проверить обновления'}
             </button>
           </div>
-
-          {/* Daily trial */}
-          {(canTrial || trialState) && (
-            <div className="settings-section">
-              <button
-                className={`settings-trial-btn${
-                  trialState === 'ok' || trialState === 'claimed' ? ' settings-trial-btn--ok' : ''
-                }${
-                  trialState === 'claimed' ? ' settings-trial-btn--claimed' : ''
-                }`}
-                onClick={canTrial ? handleClaimTrial : undefined}
-                disabled={trialState === 'loading' || trialState === 'ok' || trialState === 'claimed'}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                {trialState === 'loading' && 'Активируется...'}
-                {trialState === 'ok'      && '✓ Подписка активирована на 15 мин'}
-                {trialState === 'used'    && 'Уже получена сегодня'}
-                {trialState === 'error'   && 'Ошибка активации'}
-                {trialState === 'claimed' && '✓ 15 минут уже получены сегодня'}
-                {!trialState              && 'Получить 15 минут бесплатно'}
-              </button>
-            </div>
-          )}
 
           {/* System toggles */}
           <div className="settings-section">
@@ -362,6 +318,22 @@ export default function SettingsPanel({ onClose }) {
               </span>
             )}
           </div>
+
+          {/* Account */}
+          {onLogout && (
+            <div className="settings-section">
+              <span className="settings-section-title">Аккаунт</span>
+              <button className="settings-logout-btn" onClick={() => { close(); onLogout() }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Выйти из аккаунта
+              </button>
+            </div>
+          )}
 
         </div>
 

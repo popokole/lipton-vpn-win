@@ -7,6 +7,20 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
   getVersion: () => ipcRenderer.invoke('app:version'),
 
+  // Auth
+  authState: () => ipcRenderer.invoke('auth:state'),
+  authEmailRequest: (email) => ipcRenderer.invoke('auth:email-request', email),
+  authEmailVerify: (email, code) => ipcRenderer.invoke('auth:email-verify', { email, code }),
+  authTgInit: () => ipcRenderer.invoke('auth:tg-init'),
+  authTgVerify: (linkToken, code) => ipcRenderer.invoke('auth:tg-verify', { linkToken, code }),
+  authDeviceExchange: (code) => ipcRenderer.invoke('auth:device-exchange', code),
+  authLogout: () => ipcRenderer.invoke('auth:logout'),
+  accountSync: () => ipcRenderer.invoke('account:sync'),
+  onAccountSubscription: (cb) => {
+    ipcRenderer.on('account:subscription', (_, data) => cb(data))
+    return () => ipcRenderer.removeAllListeners('account:subscription')
+  },
+
   // VPN
   vpnConnect: (serverId) => ipcRenderer.invoke('vpn:connect', serverId),
   vpnDisconnect: () => ipcRenderer.invoke('vpn:disconnect'),

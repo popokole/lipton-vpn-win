@@ -1,6 +1,6 @@
 {
   "name": "lipton-vpn",
-  "version": "1.2.23",
+  "version": "2.0.0",
   "description": "Lipton VPN - Быстро и безопасно",
   "main": "main.js",
   "scripts": {
@@ -85,7 +85,7 @@
     "publish": {
       "provider": "github",
       "owner": "popokole",
-      "repo": "lipton-vpn-win",
+      "repo": "lipton-vpn-win-beta",
       "private": false
     }
   }
