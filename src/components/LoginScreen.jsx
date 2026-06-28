@@ -7,6 +7,7 @@ const METHODS = [
 ]
 
 const SITE_URL = 'https://site.popokole.online/app/connect'
+const BOT_URL  = 'https://t.me/botlipton_rengen_bot'
 
 export default function LoginScreen({ onLogin }) {
   const [method, setMethod] = useState('code')
@@ -37,7 +38,7 @@ export default function LoginScreen({ onLogin }) {
         {method === 'tg'    && <TgForm    onLogin={onLogin} />}
       </div>
 
-      <button className="auth-link" onClick={() => window.api.openExternal('https://t.me/liptonvpn_bot')}>
+      <button className="auth-link" onClick={() => window.api.openExternal(BOT_URL)}>
         Нет аккаунта? Откройте бота Lipton VPN
       </button>
     </div>
@@ -49,41 +50,54 @@ function ErrorLine({ text }) {
   return <div className="auth-err">{text}</div>
 }
 
-// ─── Вход по коду с сайта ─────────────────────────────────────────────────
+// finishes — общий обработчик финального входа: зелёное покачивание при успехе,
+// красное при ошибке. Возвращает класс для подсветки поля ввода.
+function flashClass(flash) {
+  if (flash === 'ok')  return ' auth-input--ok'
+  if (flash === 'err') return ' auth-input--err'
+  return ''
+}
+
+// ─── Вход по коду с сайта (4 цифры) ───────────────────────────────────────
 function CodeForm({ onLogin }) {
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [flash, setFlash] = useState('')
 
-  const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
-  const pretty = clean.length > 4 ? `${clean.slice(0, 4)}-${clean.slice(4)}` : clean
+  const clean = code.replace(/\D/g, '').slice(0, 4)
 
   const submit = async () => {
-    if (clean.length !== 8) { setErr('Введите код полностью (8 символов)'); return }
+    if (clean.length !== 4) { setErr('Введите код из 4 цифр'); setFlash('err'); setTimeout(() => setFlash(''), 500); return }
     setErr(''); setBusy(true)
     const r = await window.api.authDeviceExchange(clean)
     setBusy(false)
-    if (r.success) onLogin()
-    else setErr(r.error || 'Неверный или истёкший код')
+    if (r.success) {
+      setFlash('ok')
+      setTimeout(() => onLogin(), 650)
+    } else {
+      setErr(r.error || 'Неверный или истёкший код')
+      setFlash('err'); setTimeout(() => setFlash(''), 500)
+    }
   }
 
   return (
     <>
       <p className="auth-hint">
-        Откройте сайт → <b>Личный кабинет → Подключение</b> → «Получить код» и введите его здесь.
+        Откройте сайт → <b>Кабинет → Подключение → вкладка Windows</b> → «Получить код» и введите 4 цифры.
       </p>
       <input
-        className="auth-input auth-input--code"
-        value={pretty}
-        onChange={e => { setCode(e.target.value); setErr('') }}
+        className={`auth-input auth-input--code${flashClass(flash)}`}
+        value={clean}
+        onChange={e => { setCode(e.target.value); setErr(''); setFlash('') }}
         onKeyDown={e => e.key === 'Enter' && submit()}
-        placeholder="XXXX-XXXX"
+        placeholder="0000"
+        inputMode="numeric"
         autoFocus
-        spellCheck={false}
       />
       <ErrorLine text={err} />
-      <button className="auth-btn" onClick={submit} disabled={busy || clean.length !== 8}>
-        {busy ? 'Входим…' : 'Войти'}
+      <button className={`auth-btn${flash === 'ok' ? ' auth-btn--ok' : ''}`} onClick={submit} disabled={busy || flash === 'ok' || clean.length !== 4}>
+        {flash === 'ok' ? '✓ Вход выполнен' : busy ? 'Входим…' : 'Войти'}
       </button>
       <button className="auth-link auth-link--sm" onClick={() => window.api.openExternal(SITE_URL)}>
         Открыть сайт, чтобы получить код
@@ -92,13 +106,14 @@ function CodeForm({ onLogin }) {
   )
 }
 
-// ─── Вход по почте (OTP) ──────────────────────────────────────────────────
+// ─── Вход по почте (OTP, 6 цифр) ──────────────────────────────────────────
 function EmailForm({ onLogin }) {
   const [step, setStep] = useState('email')
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [flash, setFlash] = useState('')
 
   const request = async () => {
     const e = email.trim().toLowerCase()
@@ -112,12 +127,12 @@ function EmailForm({ onLogin }) {
 
   const verify = async () => {
     const c = code.replace(/\D/g, '').slice(0, 6)
-    if (c.length !== 6) { setErr('Код из 6 цифр'); return }
+    if (c.length !== 6) { setErr('Код из 6 цифр'); setFlash('err'); setTimeout(() => setFlash(''), 500); return }
     setErr(''); setBusy(true)
     const r = await window.api.authEmailVerify(email, c)
     setBusy(false)
-    if (r.success) onLogin()
-    else setErr(r.error || 'Неверный код')
+    if (r.success) { setFlash('ok'); setTimeout(() => onLogin(), 650) }
+    else { setErr(r.error || 'Неверный код'); setFlash('err'); setTimeout(() => setFlash(''), 500) }
   }
 
   if (step === 'email') {
@@ -146,17 +161,17 @@ function EmailForm({ onLogin }) {
     <>
       <p className="auth-hint">Код отправлен на <b>{email}</b></p>
       <input
-        className="auth-input auth-input--code"
+        className={`auth-input auth-input--code${flashClass(flash)}`}
         value={code}
-        onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr('') }}
+        onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(''); setFlash('') }}
         onKeyDown={e => e.key === 'Enter' && verify()}
         placeholder="000000"
         inputMode="numeric"
         autoFocus
       />
       <ErrorLine text={err} />
-      <button className="auth-btn" onClick={verify} disabled={busy || code.length !== 6}>
-        {busy ? 'Входим…' : 'Войти'}
+      <button className={`auth-btn${flash === 'ok' ? ' auth-btn--ok' : ''}`} onClick={verify} disabled={busy || flash === 'ok' || code.length !== 6}>
+        {flash === 'ok' ? '✓ Вход выполнен' : busy ? 'Входим…' : 'Войти'}
       </button>
       <button className="auth-link auth-link--sm" onClick={() => { setStep('email'); setCode(''); setErr('') }}>
         Изменить почту
@@ -165,71 +180,65 @@ function EmailForm({ onLogin }) {
   )
 }
 
-// ─── Вход через Telegram ───────────────────────────────────────────────────
+// ─── Вход через Telegram (6 цифр из бота) ──────────────────────────────────
 function TgForm({ onLogin }) {
-  const [stage, setStage] = useState('init') // init → code
   const [linkToken, setLinkToken] = useState('')
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [opening, setOpening] = useState(false)
+  const [flash, setFlash] = useState('')
   const cancelled = useRef(false)
 
   useEffect(() => () => { cancelled.current = true }, [])
 
-  const start = async () => {
-    setErr(''); setBusy(true)
+  const openBot = async () => {
+    setErr(''); setOpening(true)
     const r = await window.api.authTgInit()
-    setBusy(false)
+    setOpening(false)
     if (cancelled.current) return
     if (r.success && r.link) {
       setLinkToken(r.link_token)
-      setStage('code')
       window.api.openExternal(r.link)
     } else {
-      setErr(r.error || 'Не удалось начать вход')
+      setErr(r.error || 'Не удалось открыть бота')
     }
   }
 
   const verify = async () => {
+    if (!linkToken) { setErr('Сначала откройте бота кнопкой выше'); return }
     const c = code.replace(/\D/g, '').slice(0, 6)
-    if (c.length !== 6) { setErr('Код из 6 цифр'); return }
+    if (c.length !== 6) { setErr('Код из 6 цифр'); setFlash('err'); setTimeout(() => setFlash(''), 500); return }
     setErr(''); setBusy(true)
     const r = await window.api.authTgVerify(linkToken, c)
     setBusy(false)
-    if (r.success) onLogin()
-    else setErr(r.error || 'Неверный код')
-  }
-
-  if (stage === 'init') {
-    return (
-      <>
-        <p className="auth-hint">Откроем бота — нажмите <b>Start</b>, бот пришлёт код для входа.</p>
-        <ErrorLine text={err} />
-        <button className="auth-btn" onClick={start} disabled={busy}>
-          {busy ? 'Открываем…' : 'Войти через Telegram'}
-        </button>
-      </>
-    )
+    if (r.success) { setFlash('ok'); setTimeout(() => onLogin(), 650) }
+    else { setErr(r.error || 'Неверный код'); setFlash('err'); setTimeout(() => setFlash(''), 500) }
   }
 
   return (
     <>
-      <p className="auth-hint">В боте нажмите <b>Start</b> и введите код из чата.</p>
+      <p className="auth-hint">
+        Откройте бота, нажмите <b>Start</b> — он пришлёт код. Введите его ниже.
+      </p>
+      <button className="auth-btn auth-btn--tg" onClick={openBot} disabled={opening}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 8, verticalAlign: '-3px' }}>
+          <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.25 14.47l-2.95-.924c-.64-.203-.654-.64.136-.95l11.52-4.44c.534-.194 1.001.13.606.092z"/>
+        </svg>
+        {opening ? 'Открываем…' : linkToken ? 'Открыть бота ещё раз' : 'Открыть бота в Telegram'}
+      </button>
+
       <input
-        className="auth-input auth-input--code"
+        className={`auth-input auth-input--code${flashClass(flash)}`}
         value={code}
-        onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr('') }}
+        onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(''); setFlash('') }}
         onKeyDown={e => e.key === 'Enter' && verify()}
-        placeholder="000000"
+        placeholder="Код из бота — 000000"
         inputMode="numeric"
-        autoFocus
       />
       <ErrorLine text={err} />
-      <button className="auth-btn" onClick={verify} disabled={busy || code.length !== 6}>
-        {busy ? 'Входим…' : 'Войти'}
-      </button>
-      <button className="auth-link auth-link--sm" onClick={start} disabled={busy}>
-        Открыть бота ещё раз
+      <button className={`auth-btn${flash === 'ok' ? ' auth-btn--ok' : ''}`} onClick={verify} disabled={busy || flash === 'ok' || code.length !== 6}>
+        {flash === 'ok' ? '✓ Вход выполнен' : busy ? 'Входим…' : 'Войти'}
       </button>
     </>
   )

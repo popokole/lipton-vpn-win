@@ -1888,3 +1888,41 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
   border-radius: 14px;
 }
 .sub-empty-text { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+
+/* ─── Auth: успех/ошибка покачивание ─────────────────────────────────────── */
+@keyframes authShake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-9px); }
+  30% { transform: translateX(8px); }
+  45% { transform: translateX(-6px); }
+  60% { transform: translateX(5px); }
+  75% { transform: translateX(-3px); }
+}
+@keyframes authWobble {
+  0%   { transform: scale(1) rotate(0); }
+  25%  { transform: scale(1.05) rotate(-1.5deg); }
+  50%  { transform: scale(1.02) rotate(1.5deg); }
+  75%  { transform: scale(1.04) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+.auth-input--err {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 3px var(--red-soft);
+  animation: authShake 0.45s var(--ease);
+}
+.auth-input--ok {
+  border-color: var(--green) !important;
+  box-shadow: 0 0 0 3px var(--green-soft);
+  color: var(--green);
+  animation: authWobble 0.55s var(--ease);
+}
+.auth-btn--ok {
+  background: linear-gradient(135deg, var(--green), var(--green2)) !important;
+  animation: authWobble 0.55s var(--ease);
+}
+.auth-btn--tg {
+  background: linear-gradient(135deg, #2aabee, #1d8fd4);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(42,171,238,0.3);
+  margin-bottom: 2px;
+}

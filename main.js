@@ -14,6 +14,12 @@ const { setupAutoUpdater } = require('./electron/auto-updater')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
 
+// В dev — отдельный userData, чтобы single-instance lock не конфликтовал с
+// установленной версией (dev и прод можно держать запущенными параллельно).
+if (isDev) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'LiptonVPN-dev'))
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
   process.exit(0)

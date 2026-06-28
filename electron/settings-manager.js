@@ -2,7 +2,9 @@ const fs = require('fs')
 const path = require('path')
 const os = require('os')
 
-const DATA_DIR = path.join(os.homedir(), 'AppData', 'Local', 'LiptonVPN')
+// В dev можно указать отдельную папку (LIPTON_DATA_DIR), чтобы dev-копия не
+// делила настройки/токены с установленной версией.
+const DATA_DIR = process.env.LIPTON_DATA_DIR || path.join(os.homedir(), 'AppData', 'Local', 'LiptonVPN')
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
 
 const DEFAULTS = {
