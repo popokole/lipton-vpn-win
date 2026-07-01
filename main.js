@@ -247,7 +247,9 @@ async function syncSubscription() {
   }
 
   const settings = settingsManager.getAll()
-  const others = (settings.subscriptions || []).filter(s => !s.managed)
+  // Убираем и managed, и тестовый триал: после входа в аккаунт бесплатный
+  // тест-доступ больше не нужен (иначе он «висит» рядом с реальной подпиской).
+  const others = (settings.subscriptions || []).filter(s => !s.managed && !s.isTrial)
   const url = view?.subscription_url
 
   if (!url) {
@@ -292,6 +294,44 @@ function setupIPC() {
   ipcMain.handle('app:minimize', () => mainWindow?.minimize())
   ipcMain.handle('app:close', () => mainWindow?.hide())
   ipcMain.handle('app:open-external', (_, url) => shell.openExternal(url))
+
+  // Статьи и гайды — открываем внутри приложения (отдельное окно Electron),
+  // а не во внешнем браузере. Блог отдаёт X-Frame-Options, поэтому не iframe, а
+  // полноценное дочернее окно в бренд-стиле.
+  let articlesWin = null
+  ipcMain.handle('articles:open', () => {
+    if (articlesWin && !articlesWin.isDestroyed()) { articlesWin.focus(); return }
+    const base = process.env.LIPTON_API_BASE || 'https://site.popokole.online'
+    articlesWin = new BrowserWindow({
+      width: 1040, height: 760, minWidth: 720, minHeight: 520,
+      title: 'Lipton VPN — Статьи и гайды',
+      autoHideMenuBar: true, backgroundColor: '#07100c',
+      parent: mainWindow || undefined,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    })
+    articlesWin.loadURL(base + '/blog')
+    // Внешние ссылки (t.me и пр.) — в системный браузер, чтобы окно оставалось блогом.
+    articlesWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } })
+    articlesWin.on('closed', () => { articlesWin = null })
+  })
+
+  // Открыть бота в Telegram. НАДЁЖНО: сразу открываем https-ссылку t.me — она
+  // работает всегда (браузер сам предложит открыть в приложении Telegram, если
+  // оно установлено). tg:// на Windows часто «молча» не открывается, если
+  // протокол не зарегистрирован, поэтому его не используем. Логин всё равно
+  // завершится авто-поллингом, как только пользователь нажмёт Start.
+  ipcMain.handle('app:open-telegram', async (_, link) => {
+    const url = String(link || '')
+    if (!/^https?:\/\//.test(url)) return { success: false, error: 'bad link' }
+    try {
+      await shell.openExternal(url)
+      console.log('[TG] opened:', url)
+      return { success: true, via: 'web' }
+    } catch (e) {
+      console.error('[TG] open failed:', e.message)
+      return { success: false, error: e.message }
+    }
+  })
 
   // Settings
   // Autostart: cached in settings JSON for instant reads — no PowerShell on open
@@ -595,6 +635,14 @@ function setupIPC() {
     catch (e) { return { success: false, error: e.message } }
   })
 
+  ipcMain.handle('auth:tg-poll', async (_, linkToken) => {
+    try {
+      const r = await apiClient.tgPoll(linkToken)
+      if (r.done) { const sync = await syncSubscription(); return { success: true, done: true, sync } }
+      return { success: true, done: false }
+    } catch (e) { return { success: false, error: e.message } }
+  })
+
   ipcMain.handle('auth:tg-verify', async (_, { linkToken, code }) => {
     try {
       await apiClient.tgVerify(linkToken, code)
@@ -623,6 +671,101 @@ function setupIPC() {
   })
 
   ipcMain.handle('account:sync', () => syncSubscription())
+
+  ipcMain.handle('account:profile', async () => {
+    try { return { success: true, profile: await apiClient.getProfile() } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+  ipcMain.handle('account:transactions', async () => {
+    try { return { success: true, ...(await apiClient.getTransactions()) } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+  ipcMain.handle('account:config', async () => {
+    try { return { success: true, config: await apiClient.getConfig() } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+  ipcMain.handle('account:delete-card', async () => {
+    try { await apiClient.deleteCard(); return { success: true } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+
+  // Тестовый доступ на 10 минут без аккаунта (с экрана входа) — чтобы можно
+  // было сразу попробовать VPN. По истечении триал-подписка истекает сама.
+  ipcMain.handle('trial:test-access', async () => {
+    try {
+      // Ссылка бесплатной подписки настраивается в админке (/config → free_sub_url),
+      // с фолбэком на встроенную TRIAL_URL.
+      let trialUrl = TRIAL_URL
+      try {
+        const cfg = await apiClient.getConfig()
+        if (cfg?.free_sub_url) trialUrl = cfg.free_sub_url
+      } catch {}
+      const { servers, userInfo } = await subscriptionManager.fetchAndParse(trialUrl)
+      const settings = settingsManager.getAll()
+      const others = (settings.subscriptions || []).filter(s => !s.isTrial)
+      const trialSub = {
+        id: 'test-' + Date.now(),
+        name: 'Тестовый доступ',
+        url: trialUrl,
+        isTrial: true,
+        addedAt: Date.now(),
+        expiresAt: Date.now() + TEST_ACCESS_DURATION,
+        lastUpdated: Date.now(),
+        servers,
+        userInfo,
+      }
+      const newSubs = [trialSub, ...others]
+      settingsManager.set('subscriptions', newSubs)
+      mainWindow?.webContents.send('sub:updated', newSubs)
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
+  })
+
+  // Оплата: тарифы из /config, checkout → confirmation_url открываем в браузере
+  ipcMain.handle('payment:checkout', async (_, opts) => {
+    try {
+      const res = await apiClient.checkout(opts || {})
+      if (res?.confirmation_url) shell.openExternal(res.confirmation_url)
+      return { success: true, ...res }
+    } catch (e) { return { success: false, error: e.message } }
+  })
+
+  // Support (чат с поддержкой; логи приложения цепляются при создании тикета)
+  ipcMain.handle('support:get', async () => {
+    try { return { success: true, ...(await apiClient.supportGet()) } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('support:send', async (_, body) => {
+    try {
+      // создаём тикет с логами (если ещё нет открытого), затем шлём сообщение
+      const logs = (logger.getLogs() || []).slice(-200)
+      await apiClient.supportCreate(
+        { app: 'windows', version: app.getVersion(), os: require('os').release() },
+        logs,
+      )
+      await apiClient.supportSend(body)
+      return { success: true }
+    } catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('news:get', async () => {
+    try { return { success: true, ...(await apiClient.getNews()) } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+
+  ipcMain.handle('support:attach-logs', async () => {
+    try {
+      const logs = (logger.getLogs() || []).slice(-300)
+      await apiClient.supportCreate(
+        { app: 'windows', version: app.getVersion(), os: require('os').release(), manual_logs: true },
+        logs,
+      )
+      return { success: true }
+    } catch (e) { return { success: false, error: e.message } }
+  })
 
   // Subscriptions
   ipcMain.handle('sub:list', () => settingsManager.get('subscriptions') || [])
@@ -763,6 +906,7 @@ function setupIPC() {
 const TRIAL_URL = 'https://sub.popokole.online/NcvZvQsDXeQ1TJZu'
 const TRIAL_DURATION = 60 * 60 * 1000
 const DAILY_TRIAL_DURATION = 15 * 60 * 1000
+const TEST_ACCESS_DURATION = 10 * 60 * 1000 // тест-доступ с экрана входа
 
 async function maybeAddTrial() {
   const settings = settingsManager.getAll()

@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   minimize: () => ipcRenderer.invoke('app:minimize'),
   close: () => ipcRenderer.invoke('app:close'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  openTelegram: (link) => ipcRenderer.invoke('app:open-telegram', link),
+  openArticles: () => ipcRenderer.invoke('articles:open'),
   getVersion: () => ipcRenderer.invoke('app:version'),
 
   // Auth
@@ -12,10 +14,21 @@ contextBridge.exposeInMainWorld('api', {
   authEmailRequest: (email) => ipcRenderer.invoke('auth:email-request', email),
   authEmailVerify: (email, code) => ipcRenderer.invoke('auth:email-verify', { email, code }),
   authTgInit: () => ipcRenderer.invoke('auth:tg-init'),
+  authTgPoll: (linkToken) => ipcRenderer.invoke('auth:tg-poll', linkToken),
   authTgVerify: (linkToken, code) => ipcRenderer.invoke('auth:tg-verify', { linkToken, code }),
   authDeviceExchange: (code) => ipcRenderer.invoke('auth:device-exchange', code),
   authLogout: () => ipcRenderer.invoke('auth:logout'),
   accountSync: () => ipcRenderer.invoke('account:sync'),
+  trialTestAccess: () => ipcRenderer.invoke('trial:test-access'),
+  paymentCheckout: (opts) => ipcRenderer.invoke('payment:checkout', opts),
+  supportGet: () => ipcRenderer.invoke('support:get'),
+  supportSend: (body) => ipcRenderer.invoke('support:send', body),
+  supportAttachLogs: () => ipcRenderer.invoke('support:attach-logs'),
+  getNews: () => ipcRenderer.invoke('news:get'),
+  accountProfile: () => ipcRenderer.invoke('account:profile'),
+  accountTransactions: () => ipcRenderer.invoke('account:transactions'),
+  accountConfig: () => ipcRenderer.invoke('account:config'),
+  accountDeleteCard: () => ipcRenderer.invoke('account:delete-card'),
   onAccountSubscription: (cb) => {
     ipcRenderer.on('account:subscription', (_, data) => cb(data))
     return () => ipcRenderer.removeAllListeners('account:subscription')

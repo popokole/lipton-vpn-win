@@ -17,7 +17,7 @@ function TrialCountdown({ expiresAt }) {
   return <span>{m}:{String(s).padStart(2, '0')} осталось</span>
 }
 
-function SubCard({ sub, onRefresh }) {
+function SubCard({ sub, onRefresh, onBuy }) {
   const [loading, setLoading] = useState(false)
 
   const handleRefresh = async () => {
@@ -65,7 +65,7 @@ function SubCard({ sub, onRefresh }) {
               <TrialCountdown expiresAt={sub.expiresAt} />
             </div>
           )}
-          <button className="sub-buy-btn" onClick={() => window.api.openExternal(BUY_URL)}>
+          <button className="sub-buy-btn" onClick={onBuy || (() => window.api.openExternal(BUY_URL))}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.25 14.47l-2.95-.924c-.64-.203-.654-.64.136-.95l11.52-4.44c.534-.194 1.001.13.606.092z"/>
             </svg>
@@ -78,7 +78,7 @@ function SubCard({ sub, onRefresh }) {
 
       {!sub.isTrial && (
         <div className="sub-renew-row">
-          <button className="btn-renew" onClick={() => window.api.openExternal(BUY_URL)}>
+          <button className="btn-renew" onClick={onBuy || (() => window.api.openExternal(BUY_URL))}>
             Продлить
           </button>
         </div>
@@ -87,7 +87,7 @@ function SubCard({ sub, onRefresh }) {
   )
 }
 
-export default function SubscriptionPanel({ subscriptions, onRefresh }) {
+export default function SubscriptionPanel({ subscriptions, onRefresh, onBuy }) {
   const trial = subscriptions.find(s => s.isTrial)
   const real  = subscriptions.filter(s => !s.isTrial)
   const hasAny = subscriptions.length > 0
@@ -100,20 +100,20 @@ export default function SubscriptionPanel({ subscriptions, onRefresh }) {
 
       {trial && (
         <div className="sub-list" style={{ marginBottom: 8 }}>
-          <SubCard sub={trial} onRefresh={onRefresh} />
+          <SubCard sub={trial} onRefresh={onRefresh} onBuy={onBuy} />
         </div>
       )}
 
       {real.length > 0 && (
         <div className="sub-list" style={{ marginBottom: 8 }}>
-          {real.map(s => <SubCard key={s.id} sub={s} onRefresh={onRefresh} />)}
+          {real.map(s => <SubCard key={s.id} sub={s} onRefresh={onRefresh} onBuy={onBuy} />)}
         </div>
       )}
 
       {!hasAny && (
         <div className="sub-empty">
           <p className="sub-empty-text">Активной подписки нет</p>
-          <button className="sub-buy-btn" onClick={() => window.api.openExternal(BUY_URL)}>
+          <button className="sub-buy-btn" onClick={onBuy || (() => window.api.openExternal(BUY_URL))}>
             Оформить подписку
           </button>
           <button className="btn-outline" style={{ marginTop: 8 }} onClick={onRefresh}>
