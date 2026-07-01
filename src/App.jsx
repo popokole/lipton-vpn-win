@@ -7,6 +7,12 @@ import SettingsPanel from './components/SettingsPanel'
 import PlanesOverlay from './components/PlanesOverlay'
 import WelcomeScreen from './components/WelcomeScreen'
 import LoginScreen from './components/LoginScreen'
+import AccountPanel from './components/AccountPanel'
+import SupportPanel from './components/SupportPanel'
+import NewsPanel from './components/NewsPanel'
+import BillingPanel from './components/BillingPanel'
+import HistoryPanel from './components/HistoryPanel'
+import SymbolField from './components/SymbolField'
 
 function Toast({ toasts, onRemove }) {
   if (!toasts.length) return null
@@ -14,6 +20,9 @@ function Toast({ toasts, onRemove }) {
     <div className="toast-container">
       {toasts.map(t => (
         <div key={t.id} className={`toast toast--${t.type}`}>
+          <div className="toast-field">
+            <SymbolField opacity={0.2} color={t.type === 'error' ? '255,107,90' : '34,229,138'} />
+          </div>
           <span className="toast-msg">{t.message}</span>
           <button className="toast-close" onClick={() => onRemove(t.id)}>✕</button>
         </div>
@@ -51,10 +60,16 @@ export default function App() {
   const [activeServerId, setActiveServerId] = useState(null)
   const [subscriptions, setSubscriptions] = useState([])
   const [showSettings, setShowSettings] = useState(false)
+  const [showAccount, setShowAccount] = useState(false)
+  const [showSupport, setShowSupport] = useState(false)
+  const [showBilling, setShowBilling] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [showNews, setShowNews] = useState(false)
   const [pinging, setPinging] = useState(false)
   const [version, setVersion] = useState('')
   const [loading, setLoading] = useState(true)
   const [authed, setAuthed] = useState(null)
+  const [guest, setGuest] = useState(false)
   const [update, setUpdate] = useState(null)
   const [updateAvailable, setUpdateAvailable] = useState(null)
   const [planeMode, setPlaneMode] = useState(null)
@@ -105,7 +120,15 @@ export default function App() {
     setActiveServerId(null)
     setVpnStatus('disconnected')
     setShowSettings(false)
+    setGuest(false)
     setAuthed(false)
+  }, [])
+
+  // Тест-доступ без аккаунта: входим в приложение как «гость» с триал-подпиской.
+  const handleTrial = useCallback(async () => {
+    const subs = await window.api.subList()
+    setSubscriptions(subs || [])
+    setGuest(true)
   }, [])
 
   useEffect(() => {
@@ -204,11 +227,11 @@ export default function App() {
     'kill-switch': 'Kill Switch активен',
   }[vpnStatus] || 'Отключено'
 
-  if (authed === false) {
+  if (authed === false && !guest) {
     return (
       <div className="app">
         <TitleBar />
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen onLogin={handleLogin} onTrial={handleTrial} />
       </div>
     )
   }
@@ -227,8 +250,21 @@ export default function App() {
 
   return (
     <div className="app">
-      <TitleBar onSettings={() => setShowSettings(true)} />
+      <div className="app-bg">
+        <SymbolField opacity={0.09} />
+      </div>
+      <TitleBar
+        onSettings={() => setShowSettings(true)}
+        onAccount={authed ? () => setShowAccount(true) : undefined}
+      />
       <Toast toasts={toasts} onRemove={removeToast} />
+
+      {guest && !authed && (
+        <div className="guest-banner">
+          <span>Тест-доступ · без аккаунта</span>
+          <button onClick={() => setGuest(false)}>Войти в аккаунт</button>
+        </div>
+      )}
       {showSettings && (
         <SettingsPanel
           onClose={() => setShowSettings(false)}
@@ -236,6 +272,20 @@ export default function App() {
           onLogout={handleLogout}
         />
       )}
+      {showAccount && (
+        <AccountPanel
+          onClose={() => setShowAccount(false)}
+          onLogout={handleLogout}
+          onNews={() => { setShowAccount(false); setShowNews(true) }}
+          onSupport={() => { setShowAccount(false); setShowSupport(true) }}
+          onBilling={() => { setShowAccount(false); setShowBilling(true) }}
+          onHistory={() => { setShowAccount(false); setShowHistory(true) }}
+        />
+      )}
+      {showNews && <NewsPanel onClose={() => { setShowNews(false); setShowAccount(true) }} />}
+      {showSupport && <SupportPanel onClose={() => setShowSupport(false)} />}
+      {showBilling && <BillingPanel onClose={() => setShowBilling(false)} />}
+      {showHistory && <HistoryPanel onClose={() => { setShowHistory(false); setShowAccount(true) }} />}
 
       <PlanesOverlay mode={planeMode} />
 
@@ -326,6 +376,7 @@ export default function App() {
         <SubscriptionPanel
           subscriptions={subscriptions}
           onRefresh={() => window.api.accountSync()}
+          onBuy={authed ? () => setShowBilling(true) : null}
         />
 
         {/* Coming soon */}

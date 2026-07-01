@@ -1,11 +1,35 @@
-export default function TitleBar({ onSettings }) {
+export default function TitleBar({ onSettings, onAccount }) {
   return (
     <div className="titlebar">
       <div className="titlebar-left">
-        <div className="titlebar-logo">L</div>
+        <div className="titlebar-logo">
+          {/* Фирменный знак Lipton — как на сайте (три скошенных столбика) */}
+          <svg width="20" height="20" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="tb-logo" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#34F5A3" />
+                <stop offset="1" stopColor="#0FA968" />
+              </linearGradient>
+            </defs>
+            <g transform="skewX(-9)">
+              <rect x="6" y="5" width="6.2" height="30" rx="3.1" fill="url(#tb-logo)" />
+              <rect x="16.5" y="20" width="6.2" height="15" rx="3.1" fill="url(#tb-logo)" opacity="0.82" />
+              <rect x="27" y="13" width="6.2" height="22" rx="3.1" fill="url(#tb-logo)" opacity="0.62" />
+            </g>
+          </svg>
+        </div>
         <span className="titlebar-name">LIPTON VPN</span>
       </div>
       <div className="titlebar-controls">
+        {onAccount && (
+          <button className="titlebar-btn" onClick={onAccount} title="Кабинет">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </button>
+        )}
         <button className="titlebar-btn" onClick={onSettings} title="Настройки">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

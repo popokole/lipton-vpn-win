@@ -77,14 +77,30 @@ function errMsg(resp, fallback) {
 
 // ─── Refresh + защищённый запрос ────────────────────────────────────────────
 
-async function refresh() {
-  const t = getTokens()
-  if (!t || !t.refresh) return false
-  try {
-    const resp = await requestRaw('POST', '/auth/refresh', { body: { refresh_token: t.refresh } })
-    if (resp.status === 200 && resp.json?.access_token) { setTokens(resp.json); return true }
-  } catch {}
-  return false
+// single-flight: параллельные 401-запросы делят ОДИН refresh, иначе токен
+// ротируется гонкой и сервер отвечает 429 «слишком много запросов».
+let _refreshing = null
+// refresh возвращает { ok, invalid }:
+//   ok=true            — токены обновлены;
+//   invalid=true       — сервер ЯВНО отклонил refresh-токен (401/400) → надо разлогинить;
+//   invalid=false      — транзиентный сбой (сеть/5xx) → сессию НЕ трогаем.
+// Важно: раньше при любом провале refresh (в т.ч. сетевом блипе — например при
+// переподключении VPN после отвязки устройства) токены стирались и юзера
+// выкидывало из аккаунта. Теперь разлогин только на реальный отказ токена.
+function refresh() {
+  if (_refreshing) return _refreshing
+  _refreshing = (async () => {
+    const t = getTokens()
+    if (!t || !t.refresh) return { ok: false, invalid: true }
+    try {
+      const resp = await requestRaw('POST', '/auth/refresh', { body: { refresh_token: t.refresh } })
+      if (resp.status === 200 && resp.json?.access_token) { setTokens(resp.json); return { ok: true, invalid: false } }
+      return { ok: false, invalid: resp.status === 401 || resp.status === 400 }
+    } catch {
+      return { ok: false, invalid: false } // сеть/таймаут — не разлогиниваем
+    }
+  })().finally(() => { _refreshing = null })
+  return _refreshing
 }
 
 // authed выполняет запрос с Bearer и одной попыткой refresh при 401.
@@ -92,8 +108,9 @@ async function authed(method, path, body, _retry = false) {
   const t = getTokens()
   const resp = await requestRaw(method, path, { body, token: t?.access })
   if (resp.status === 401 && !_retry) {
-    if (await refresh()) return authed(method, path, body, true)
-    clearTokens()
+    const r = await refresh()
+    if (r.ok) return authed(method, path, body, true)
+    if (r.invalid) clearTokens() // только реальный отказ токена рвёт сессию
     throw Object.assign(new Error('Сессия истекла, войдите снова'), { code: 'unauthorized', status: 401 })
   }
   if (resp.status >= 400) throw Object.assign(new Error(errMsg(resp)), { status: resp.status })
@@ -121,6 +138,16 @@ async function tgInit() {
   return resp.json // { link, link_token, ttl }
 }
 
+// tgPoll — авто-вход: опрашивает бэкенд, привязал ли бот chat к сессии. Пока нет
+// — { done:false } (pending). Как только пользователь нажал Start в боте —
+// сохраняет токены и возвращает { done:true }.
+async function tgPoll(linkToken) {
+  const resp = await requestRaw('POST', '/auth/telegram/poll', { body: { link_token: linkToken } })
+  if (resp.status >= 400) throw new Error(errMsg(resp, 'Сессия входа истекла'))
+  if (resp.json?.access_token) { setTokens(resp.json); return { done: true } }
+  return { done: false }
+}
+
 async function tgVerify(linkToken, code) {
   const resp = await requestRaw('POST', '/auth/telegram/verify', { body: { link_token: linkToken, code } })
   if (resp.status >= 400 || !resp.json?.access_token) throw new Error(errMsg(resp, 'Неверный код'))
@@ -140,13 +167,49 @@ async function logout() {
   clearTokens()
 }
 
-// ─── Данные аккаунта ────────────────────────────────────────────────────────
+// ─── Данные аккаунта (личный кабинет) ──────────────────────────────────────
 
 function getSubscription() { return authed('GET', '/me/subscription') }
+function getProfile() { return authed('GET', '/me') }
+function getTransactions() { return authed('GET', '/me/transactions') }
+// /config публичный (без токена) — нужен и на экране входа (тест-доступ).
+async function getConfig() {
+  const resp = await requestRaw('GET', '/config')
+  if (resp.status >= 400) throw new Error(errMsg(resp, 'Не удалось получить конфиг'))
+  return resp.json
+}
+function deleteCard() { return authed('DELETE', '/payments/card') }
+
+// ─── Оплата ───────────────────────────────────────────────────────────────
+function checkout({ tariffCode, periodId, promoCode } = {}) {
+  return authed('POST', '/payments/checkout', {
+    tariff_code: tariffCode || '',
+    period_id: periodId || '',
+    promo_code: promoCode || '',
+  })
+}
+
+// ─── Поддержка ──────────────────────────────────────────────────────────────
+function supportGet() { return authed('GET', '/support/ticket') }
+function supportCreate(diagnostics, logs) {
+  return authed('POST', '/support/tickets', { diagnostics: diagnostics || {}, logs: logs || [] })
+}
+function supportSend(body) { return authed('POST', '/support/messages', { body }) }
+
+// ─── Новости ─────────────────────────────────────────────────────────────────
+// /news публичный (без токена) — лента VPN-новостей, как в веб-кабинете.
+async function getNews() {
+  const resp = await requestRaw('GET', '/news')
+  if (resp.status >= 400) throw new Error(errMsg(resp, 'Не удалось загрузить новости'))
+  return resp.json // { items: [...] }
+}
 
 module.exports = {
   API_BASE,
   isAuthed, getTokens, clearTokens, refresh,
-  emailRequest, emailVerify, tgInit, tgVerify, deviceExchange, logout,
-  getSubscription,
+  emailRequest, emailVerify, tgInit, tgPoll, tgVerify, deviceExchange, logout,
+  getSubscription, getProfile, getTransactions, getConfig, deleteCard,
+  checkout,
+  supportGet, supportCreate, supportSend,
+  getNews,
 }
