@@ -4,17 +4,18 @@ export default function TitleBar({ onSettings, onAccount }) {
       <div className="titlebar-left">
         <div className="titlebar-logo">
           {/* Фирменный знак Lipton — как на сайте (три скошенных столбика) */}
-          <svg width="20" height="20" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+          <svg width="19" height="19" viewBox="0 0 40 40" fill="none" aria-hidden="true">
             <defs>
               <linearGradient id="tb-logo" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0" stopColor="#34F5A3" />
                 <stop offset="1" stopColor="#0FA968" />
               </linearGradient>
             </defs>
-            <g transform="skewX(-9)">
-              <rect x="6" y="5" width="6.2" height="30" rx="3.1" fill="url(#tb-logo)" />
-              <rect x="16.5" y="20" width="6.2" height="15" rx="3.1" fill="url(#tb-logo)" opacity="0.82" />
-              <rect x="27" y="13" width="6.2" height="22" rx="3.1" fill="url(#tb-logo)" opacity="0.62" />
+            {/* сбалансированные столбики, отцентрованы по боксу (skew компенсирован сдвигом) */}
+            <g transform="translate(3.2 0) skewX(-9)">
+              <rect x="8" y="7" width="5.4" height="26" rx="2.7" fill="url(#tb-logo)" />
+              <rect x="17" y="19" width="5.4" height="14" rx="2.7" fill="url(#tb-logo)" opacity="0.82" />
+              <rect x="26" y="13" width="5.4" height="20" rx="2.7" fill="url(#tb-logo)" opacity="0.62" />
             </g>
           </svg>
         </div>

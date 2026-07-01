@@ -765,6 +765,15 @@ function setupIPC() {
     try { return { success: true, ...(await apiClient.aiChat(message)) } }
     catch (e) { return { success: false, error: e.message } }
   })
+  // Логи приложения → в чат поддержки (ИИ/оператор видят полную расшифровку)
+  ipcMain.handle('ai:logs', async () => {
+    try {
+      const logs = (logger.getLogs() || []).slice(-400).join('\n')
+      if (!logs.trim()) return { success: false, error: 'Логи пусты — подключитесь к VPN и повторите' }
+      const note = `Windows ${require('os').release()}, app ${app.getVersion()}`
+      return { success: true, ...(await apiClient.sendLogs(logs, note)) }
+    } catch (e) { return { success: false, error: e.message } }
+  })
 
   ipcMain.handle('support:attach-logs', async () => {
     try {

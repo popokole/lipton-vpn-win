@@ -72,12 +72,17 @@ export default function SupportPanel({ onClose }) {
   }
 
   const attachLogs = async () => {
+    if (busy) return
     setBusy(true); setErr('')
-    const r = await window.api.supportAttachLogs()
-    setBusy(false)
+    // Пользователь видит только короткое сообщение; полную расшифровку получают ИИ и оператор.
+    setMessages(m => [...(m || []), { sender: 'user', body: '📎 Логи приложения отправлены', created_at: new Date().toISOString() }])
+    const r = await window.api.sendAppLogs()
     if (r.success) {
-      setLogsSent(true) // стойкий баннер-подтверждение (см. ниже), поллинг его не трёт
+      setLogsSent(true)
+      if (r.reply) setMessages(m => [...(m || []), { sender: 'support', body: r.reply, created_at: new Date().toISOString() }])
     } else setErr(r.error || 'Не удалось отправить логи')
+    setBusy(false)
+    await load()
   }
 
   return (
