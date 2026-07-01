@@ -29,10 +29,17 @@ export default function SupportPanel({ onClose }) {
   const listRef = useRef(null)
   const pollRef = useRef(null)
 
+  // Единый чат с сайтом: тянем AI-диалог (ai_dialogs). role user→свои,
+  // assistant→ответы поддержки/ИИ. Приводим к формату {sender, body, created_at}.
   const load = async () => {
-    const r = await window.api.supportGet()
-    if (r.success) setMessages(r.messages || [])
-    else { setMessages([]); setErr(r.error || '') }
+    const r = await window.api.getAiDialog()
+    if (r.success) {
+      setMessages((r.messages || []).map((m) => ({
+        sender: m.role === 'user' ? 'user' : 'support',
+        body: m.content,
+        created_at: m.at,
+      })))
+    } else { setMessages([]); setErr(r.error || '') }
   }
 
   useEffect(() => {
@@ -54,9 +61,13 @@ export default function SupportPanel({ onClose }) {
     // оптимистично показываем своё сообщение
     setMessages(m => [...(m || []), { sender: 'user', body, created_at: new Date().toISOString() }])
     setText('')
-    const r = await window.api.supportSend(body)
+    const r = await window.api.aiChat(body)
+    if (r.success && r.reply) {
+      setMessages(m => [...(m || []), { sender: 'support', body: r.reply, created_at: new Date().toISOString() }])
+    } else if (!r.success) {
+      setErr(r.error || 'Не удалось отправить')
+    }
     setBusy(false)
-    if (!r.success) setErr(r.error || 'Не удалось отправить')
     await load()
   }
 
@@ -101,7 +112,7 @@ export default function SupportPanel({ onClose }) {
               const prev = messages[i - 1]
               const showDay = !prev || dayKey(prev.created_at) !== dayKey(m.created_at)
               return (
-                <div key={i}>
+                <div key={i} className="sup-row">
                   {showDay && <div className="sup-day"><span>{fmtDay(m.created_at)}</span></div>}
                   {m.system ? (
                     <div className="sup-system">{m.body}</div>

@@ -756,6 +756,16 @@ function setupIPC() {
     catch (e) { return { success: false, error: e.message } }
   })
 
+  // Единый чат поддержки (тот же AI-диалог, что и на сайте)
+  ipcMain.handle('ai:dialog', async () => {
+    try { return { success: true, ...(await apiClient.getAiDialog()) } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+  ipcMain.handle('ai:send', async (_, message) => {
+    try { return { success: true, ...(await apiClient.aiChat(message)) } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+
   ipcMain.handle('support:attach-logs', async () => {
     try {
       const logs = (logger.getLogs() || []).slice(-300)

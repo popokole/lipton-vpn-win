@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('api', {
   supportGet: () => ipcRenderer.invoke('support:get'),
   supportSend: (body) => ipcRenderer.invoke('support:send', body),
   supportAttachLogs: () => ipcRenderer.invoke('support:attach-logs'),
+  getAiDialog: () => ipcRenderer.invoke('ai:dialog'),
+  aiChat: (message) => ipcRenderer.invoke('ai:send', message),
   getNews: () => ipcRenderer.invoke('news:get'),
   accountProfile: () => ipcRenderer.invoke('account:profile'),
   accountTransactions: () => ipcRenderer.invoke('account:transactions'),
