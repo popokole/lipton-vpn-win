@@ -28,18 +28,27 @@ export default function SupportPanel({ onClose }) {
   const [err, setErr] = useState('')
   const listRef = useRef(null)
   const pollRef = useRef(null)
+  const sigRef = useRef('')   // сигнатура последнего набора (sender+body) — против лишних ре-рендеров
+  const countRef = useRef(0)  // прошлое кол-во сообщений — чтобы скроллить только на новые
+
+  const sigOf = (arr) => (arr || []).map((m) => m.sender + '|' + m.body).join('\n')
 
   // Единый чат с сайтом: тянем AI-диалог (ai_dialogs). role user→свои,
   // assistant→ответы поддержки/ИИ. Приводим к формату {sender, body, created_at}.
+  // Обновляем стейт ТОЛЬКО если переписка реально изменилась — иначе поллинг
+  // каждые 6с дёргал чат (ре-рендер + принудительный скролл).
   const load = async () => {
     const r = await window.api.getAiDialog()
-    if (r.success) {
-      setMessages((r.messages || []).map((m) => ({
-        sender: m.role === 'user' ? 'user' : 'support',
-        body: m.content,
-        created_at: m.at,
-      })))
-    } else { setMessages([]); setErr(r.error || '') }
+    if (!r.success) { setMessages((m) => m ?? []); setErr(r.error || ''); return }
+    const mapped = (r.messages || []).map((m) => ({
+      sender: m.role === 'user' ? 'user' : 'support',
+      body: m.content,
+      created_at: m.at,
+    }))
+    const s = sigOf(mapped)
+    if (s === sigRef.current) return // ничего не изменилось — не трогаем стейт
+    sigRef.current = s
+    setMessages(mapped)
   }
 
   useEffect(() => {
@@ -48,8 +57,15 @@ export default function SupportPanel({ onClose }) {
     return () => clearInterval(pollRef.current)
   }, [])
 
+  // Скроллим вниз только когда пришли новые сообщения или пользователь уже внизу
+  // (не вырываем его, если он листает историю вверх).
   useEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
+    const el = listRef.current
+    if (!el || messages === null) return
+    const grew = messages.length > countRef.current
+    countRef.current = messages.length
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 140
+    if (grew || nearBottom) el.scrollTop = el.scrollHeight
   }, [messages])
 
   function close() { setClosing(true); setTimeout(() => onClose(), 260) }
@@ -58,12 +74,12 @@ export default function SupportPanel({ onClose }) {
     const body = text.trim()
     if (!body || busy) return
     setBusy(true); setErr('')
-    // оптимистично показываем своё сообщение
-    setMessages(m => [...(m || []), { sender: 'user', body, created_at: new Date().toISOString() }])
+    // оптимистично показываем своё сообщение (и держим sigRef в актуальном виде)
+    setMessages(m => { const n = [...(m || []), { sender: 'user', body, created_at: new Date().toISOString() }]; sigRef.current = sigOf(n); return n })
     setText('')
     const r = await window.api.aiChat(body)
     if (r.success && r.reply) {
-      setMessages(m => [...(m || []), { sender: 'support', body: r.reply, created_at: new Date().toISOString() }])
+      setMessages(m => { const n = [...(m || []), { sender: 'support', body: r.reply, created_at: new Date().toISOString() }]; sigRef.current = sigOf(n); return n })
     } else if (!r.success) {
       setErr(r.error || 'Не удалось отправить')
     }
@@ -75,11 +91,11 @@ export default function SupportPanel({ onClose }) {
     if (busy) return
     setBusy(true); setErr('')
     // Пользователь видит только короткое сообщение; полную расшифровку получают ИИ и оператор.
-    setMessages(m => [...(m || []), { sender: 'user', body: '📎 Логи приложения отправлены', created_at: new Date().toISOString() }])
+    setMessages(m => { const n = [...(m || []), { sender: 'user', body: '📎 Логи приложения отправлены', created_at: new Date().toISOString() }]; sigRef.current = sigOf(n); return n })
     const r = await window.api.sendAppLogs()
     if (r.success) {
       setLogsSent(true)
-      if (r.reply) setMessages(m => [...(m || []), { sender: 'support', body: r.reply, created_at: new Date().toISOString() }])
+      if (r.reply) setMessages(m => { const n = [...(m || []), { sender: 'support', body: r.reply, created_at: new Date().toISOString() }]; sigRef.current = sigOf(n); return n })
     } else setErr(r.error || 'Не удалось отправить логи')
     setBusy(false)
     await load()
