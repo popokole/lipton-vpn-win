@@ -196,6 +196,12 @@ function supportCreate(diagnostics, logs) {
 }
 function supportSend(body) { return authed('POST', '/support/messages', { body }) }
 
+// ─── ИИ-помощник / единый чат поддержки ─────────────────────────────────────
+// Тот же диалог, что и на сайте (таблица ai_dialogs): ИИ отвечает, оператор
+// перехватывает вручную. Так чат в приложении и на сайте — общий.
+function getAiDialog() { return authed('GET', '/support/ai/dialog') }
+function aiChat(message) { return authed('POST', '/support/ai', { message }) }
+
 // ─── Новости ─────────────────────────────────────────────────────────────────
 // /news публичный (без токена) — лента VPN-новостей, как в веб-кабинете.
 async function getNews() {
@@ -211,5 +217,6 @@ module.exports = {
   getSubscription, getProfile, getTransactions, getConfig, deleteCard,
   checkout,
   supportGet, supportCreate, supportSend,
+  getAiDialog, aiChat,
   getNews,
 }
