@@ -201,6 +201,9 @@ function supportSend(body) { return authed('POST', '/support/messages', { body }
 // перехватывает вручную. Так чат в приложении и на сайте — общий.
 function getAiDialog() { return authed('GET', '/support/ai/dialog') }
 function aiChat(message) { return authed('POST', '/support/ai', { message }) }
+// Логи уходят В ЧАТ: пользователь увидит «📎 отправлены логи», а ИИ/оператор —
+// полную расшифровку (сервер прячет её в detail).
+function sendLogs(logs, note) { return authed('POST', '/support/ai/logs', { logs, note }) }
 
 // ─── Новости ─────────────────────────────────────────────────────────────────
 // /news публичный (без токена) — лента VPN-новостей, как в веб-кабинете.
@@ -217,6 +220,6 @@ module.exports = {
   getSubscription, getProfile, getTransactions, getConfig, deleteCard,
   checkout,
   supportGet, supportCreate, supportSend,
-  getAiDialog, aiChat,
+  getAiDialog, aiChat, sendLogs,
   getNews,
 }
