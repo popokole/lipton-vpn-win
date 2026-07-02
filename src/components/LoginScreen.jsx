@@ -261,8 +261,8 @@ function TgForm({ onLogin }) {
 
   const verify = async () => {
     if (!linkToken) { setErr('Сначала откройте бота кнопкой выше'); return }
-    const c = code.replace(/\D/g, '').slice(0, 4)
-    if (c.length !== 4) { setErr('Код из 4 цифр'); setFlash('err'); setTimeout(() => setFlash(''), 500); return }
+    const c = code.replace(/\D/g, '').slice(0, 6)
+    if (c.length !== 6) { setErr('Код из 6 цифр'); setFlash('err'); setTimeout(() => setFlash(''), 500); return }
     setErr(''); setBusy(true)
     const r = await window.api.authTgVerify(linkToken, c)
     setBusy(false)
@@ -273,7 +273,7 @@ function TgForm({ onLogin }) {
   return (
     <>
       <p className="auth-hint">
-        Откройте бота и нажмите <b>Start</b> — придёт 4-значный код (или вход выполнится автоматически).
+        Откройте бота и нажмите <b>Start</b> — придёт код для входа (или вход выполнится автоматически).
       </p>
       <button className="auth-btn auth-btn--tg" onClick={openBot} disabled={opening}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 8, verticalAlign: '-3px' }}>
@@ -300,13 +300,13 @@ function TgForm({ onLogin }) {
           <input
             className={`auth-input auth-input--code${flashClass(flash)}`}
             value={code}
-            onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 4)); setErr(''); setFlash('') }}
+            onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(''); setFlash('') }}
             onKeyDown={e => e.key === 'Enter' && verify()}
-            placeholder="0000"
+            placeholder="000000"
             inputMode="numeric"
           />
           <ErrorLine text={err} />
-          <button className={`auth-btn${flash === 'ok' ? ' auth-btn--ok' : ''}`} onClick={verify} disabled={busy || flash === 'ok' || code.length !== 4}>
+          <button className={`auth-btn${flash === 'ok' ? ' auth-btn--ok' : ''}`} onClick={verify} disabled={busy || flash === 'ok' || code.length !== 6}>
             {flash === 'ok' ? '✓ Вход выполнен' : busy ? 'Входим…' : 'Войти по коду'}
           </button>
         </>
