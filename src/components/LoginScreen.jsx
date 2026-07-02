@@ -6,7 +6,7 @@ const METHODS = [
   { key: 'tg',    label: 'Telegram' },
 ]
 
-const SITE_URL = 'https://site.popokole.online/app/connect'
+const SITE_URL = 'https://liptonone.online/app/connect'
 const BOT_URL  = 'https://t.me/botlipton_rengen_bot'
 
 export default function LoginScreen({ onLogin, onTrial }) {

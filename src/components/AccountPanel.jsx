@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-const SITE = 'https://site.popokole.online'
+const SITE = 'https://liptonone.online'
 
 function rub(kopeks) {
   const v = (kopeks || 0) / 100

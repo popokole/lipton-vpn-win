@@ -301,7 +301,7 @@ function setupIPC() {
   let articlesWin = null
   ipcMain.handle('articles:open', () => {
     if (articlesWin && !articlesWin.isDestroyed()) { articlesWin.focus(); return }
-    const base = process.env.LIPTON_API_BASE || 'https://site.popokole.online'
+    const base = process.env.LIPTON_API_BASE || 'https://liptonone.online'
     articlesWin = new BrowserWindow({
       width: 1040, height: 760, minWidth: 720, minHeight: 520,
       title: 'Lipton VPN — Статьи и гайды',

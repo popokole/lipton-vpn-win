@@ -1,11 +1,11 @@
-// Клиент бэкенда Lipton (site.popokole.online). Хранит токены в settings.json,
+// Клиент бэкенда Lipton (liptonone.online). Хранит токены в settings.json,
 // прозрачно обновляет access по refresh при 401. Платформа — windows.
 const https = require('https')
 const os = require('os')
 const { URL } = require('url')
 const settingsManager = require('./settings-manager')
 
-const API_BASE = process.env.LIPTON_API_BASE || 'https://site.popokole.online'
+const API_BASE = process.env.LIPTON_API_BASE || 'https://liptonone.online'
 
 function appVersion() {
   try { return require('../package.json').version } catch { return '0.0.0' }
