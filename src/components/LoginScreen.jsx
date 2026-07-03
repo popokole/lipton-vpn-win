@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
 const METHODS = [
   { key: 'code',  label: 'Код с сайта' },
@@ -7,7 +7,7 @@ const METHODS = [
 ]
 
 const SITE_URL = 'https://liptonone.online/app/connect'
-const BOT_URL  = 'https://t.me/botlipton_rengen_bot'
+const BOT_URL  = 'https://t.me/liptonvpn_bot'
 
 export default function LoginScreen({ onLogin, onTrial }) {
   const [method, setMethod] = useState('code')
@@ -207,111 +207,57 @@ function EmailForm({ onLogin }) {
   )
 }
 
-// ─── Вход через Telegram (6 цифр из бота) ──────────────────────────────────
+// ─── Вход через Telegram: код из бота («Вход через ПК», 4 цифры) ────────────
 function TgForm({ onLogin }) {
-  const [linkToken, setLinkToken] = useState('')
-  const [tgLink, setTgLink] = useState('')
   const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
-  const [opening, setOpening] = useState(false)
-  const [waiting, setWaiting] = useState(false) // ждём подтверждения в боте (авто-вход)
   const [flash, setFlash] = useState('')
-  const cancelled = useRef(false)
-  const pollRef = useRef(null)
 
-  const stopPoll = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
-  useEffect(() => () => { cancelled.current = true; stopPoll() }, [])
+  const clean = code.replace(/\D/g, '').slice(0, 4)
 
-  const succeed = () => {
-    stopPoll(); setWaiting(false); setFlash('ok'); setTimeout(() => onLogin(), 650)
+  const openBot = () => {
+    if (window.api.openTelegram) window.api.openTelegram(BOT_URL)
+    else window.api.openExternal(BOT_URL)
   }
 
-  // Авто-вход: как только пользователь нажал Start в боте, poll вернёт токены.
-  const startPolling = (token) => {
-    stopPoll()
-    setWaiting(true)
-    const started = Date.now()
-    pollRef.current = setInterval(async () => {
-      if (cancelled.current) return stopPoll()
-      if (Date.now() - started > 290000) { stopPoll(); setWaiting(false); return } // TTL 5 мин
-      const r = await window.api.authTgPoll(token)
-      if (cancelled.current) return
-      if (r.success && r.done) succeed()
-      else if (!r.success) { stopPoll(); setWaiting(false) } // сессия истекла — вход по коду
-    }, 2500)
-  }
-
-  const openBot = async () => {
-    setErr(''); setOpening(true)
-    const r = await window.api.authTgInit()
-    setOpening(false)
-    if (cancelled.current) return
-    if (r.success && r.link) {
-      setLinkToken(r.link_token)
-      setTgLink(r.link)
-      // Надёжное открытие: tg:// (десктоп-Telegram) → фолбэк на t.me в браузере.
-      const o = await window.api.openTelegram(r.link)
-      if (!o?.success) setErr('Не удалось открыть Telegram. Откройте бота вручную ссылкой ниже.')
-      startPolling(r.link_token) // ждём нажатия Start — войдём сами
-    } else {
-      setErr(r.error || 'Не удалось начать вход. Проверьте интернет и попробуйте снова.')
-    }
-  }
-
-  const verify = async () => {
-    if (!linkToken) { setErr('Сначала откройте бота кнопкой выше'); return }
-    const c = code.replace(/\D/g, '').slice(0, 6)
-    if (c.length !== 6) { setErr('Код из 6 цифр'); setFlash('err'); setTimeout(() => setFlash(''), 500); return }
+  const submit = async () => {
+    if (clean.length !== 4) { setErr('Введите код из 4 цифр'); setFlash('err'); setTimeout(() => setFlash(''), 500); return }
     setErr(''); setBusy(true)
-    const r = await window.api.authTgVerify(linkToken, c)
+    const r = await window.api.authDeviceExchange(clean)
     setBusy(false)
-    if (r.success) { succeed() }
-    else { setErr(r.error || 'Неверный код'); setFlash('err'); setTimeout(() => setFlash(''), 500) }
+    if (r.success) {
+      setFlash('ok')
+      setTimeout(() => onLogin(), 650)
+    } else {
+      setErr(r.error || 'Неверный или истёкший код')
+      setFlash('err'); setTimeout(() => setFlash(''), 500)
+    }
   }
 
   return (
     <>
       <p className="auth-hint">
-        Откройте бота и нажмите <b>Start</b> — придёт код для входа (или вход выполнится автоматически).
+        Откройте бота Lipton VPN → нажмите <b>«💻 Вход через ПК»</b> → бот пришлёт код. Введите его ниже.
       </p>
-      <button className="auth-btn auth-btn--tg" onClick={openBot} disabled={opening}>
+      <button className="auth-btn auth-btn--tg" onClick={openBot}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: 8, verticalAlign: '-3px' }}>
           <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.25 14.47l-2.95-.924c-.64-.203-.654-.64.136-.95l11.52-4.44c.534-.194 1.001.13.606.092z"/>
         </svg>
-        {opening ? 'Открываем…' : linkToken ? 'Открыть бота ещё раз' : 'Открыть бота в Telegram'}
+        Открыть бота в Telegram
       </button>
-      {tgLink && (
-        <button className="auth-link auth-link--sm" onClick={() => window.api.openExternal(tgLink)}>
-          Не открылся? Открыть через браузер
-        </button>
-      )}
-
-      {waiting && (
-        <div className="auth-hint" style={{ textAlign: 'center', marginTop: 4 }}>
-          ⏳ Ждём подтверждения в Telegram — нажмите <b>Start</b> в боте…
-        </div>
-      )}
-
-      {/* Запасной вариант: если авто-вход не сработал — код из бота вручную */}
-      {linkToken && (
-        <>
-          <div className="auth-or" style={{ marginTop: 8 }}><span>или код из бота вручную</span></div>
-          <input
-            className={`auth-input auth-input--code${flashClass(flash)}`}
-            value={code}
-            onChange={e => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr(''); setFlash('') }}
-            onKeyDown={e => e.key === 'Enter' && verify()}
-            placeholder="000000"
-            inputMode="numeric"
-          />
-          <ErrorLine text={err} />
-          <button className={`auth-btn${flash === 'ok' ? ' auth-btn--ok' : ''}`} onClick={verify} disabled={busy || flash === 'ok' || code.length !== 6}>
-            {flash === 'ok' ? '✓ Вход выполнен' : busy ? 'Входим…' : 'Войти по коду'}
-          </button>
-        </>
-      )}
-      {!linkToken && <ErrorLine text={err} />}
+      <input
+        className={`auth-input auth-input--code${flashClass(flash)}`}
+        value={clean}
+        onChange={e => { setCode(e.target.value); setErr(''); setFlash('') }}
+        onKeyDown={e => e.key === 'Enter' && submit()}
+        placeholder="0000"
+        inputMode="numeric"
+      />
+      <ErrorLine text={err} />
+      <button className={`auth-btn${flash === 'ok' ? ' auth-btn--ok' : ''}`} onClick={submit} disabled={busy || flash === 'ok' || clean.length !== 4}>
+        {flash === 'ok' ? '✓ Вход выполнен' : busy ? 'Входим…' : 'Войти'}
+      </button>
     </>
   )
 }
