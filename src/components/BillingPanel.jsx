@@ -124,8 +124,10 @@ export default function BillingPanel({ onClose }) {
       setView(v)
       if (v?.status === 'active' || v?.status === 'grace') loadOptions()
       if (!r.success || !r.config?.tariffs?.length) { setErr('Не удалось загрузить тарифы'); return }
-      // продлеваем текущий тариф подписки; если его нет в списке — основной (первый)
-      const t = r.config.tariffs.find(x => v?.tariff_code && x.code === v.tariff_code) || r.config.tariffs[0]
+      // при активной подписке продлеваем её текущий тариф (другой — только через смену);
+      // при истёкшей/неактивной — основной (первый), как раньше
+      const active = v?.status === 'active' || v?.status === 'grace'
+      const t = (active && v?.tariff_code && r.config.tariffs.find(x => x.code === v.tariff_code)) || r.config.tariffs[0]
       const ps = [...(t.periods || [])].sort((a, b) => a.days - b.days)
       setTariff(t)
       setPeriods(ps)
@@ -216,6 +218,9 @@ export default function BillingPanel({ onClose }) {
   }
 
   const retry = () => {
+    // Смена тарифа: таймаут ≠ отказ — списание может ещё идти. Новый ключ здесь
+    // мог бы запустить второе списание, поэтому просто продолжаем опрос того же платежа.
+    if (flow === 'change' && payErr === 'timeout') { setPayErr(''); return }
     setOk(false); setPaid(false); setPayErr(''); setTxId(null); setErr('')
     if (flow === 'change') {
       // новая попытка оплаты — новый ключ и свежий расчёт
@@ -287,12 +292,18 @@ export default function BillingPanel({ onClose }) {
               <div className="bill-ok-ico" style={{ fontSize: 40 }}>❌</div>
               <div className="bill-ok-title">Оплата не прошла</div>
               <div className="bill-ok-text">
-                {payErr === 'timeout'
+                {payErr === 'timeout' && flow === 'change'
+                  ? 'Оплата ещё не подтвердилась. Повторно платить не нужно — нажмите «Проверить ещё раз».'
+                  : payErr === 'timeout'
                   ? 'Не дождались оплаты. Если вы оплатили — нажмите «Проверить ещё раз».'
                   : 'Платёж отклонён или отменён. Попробуйте оплатить снова — можно другой картой или по СБП.'}
               </div>
-              <button className="acc-btn acc-btn--cta" onClick={retry}>Оплатить снова</button>
-              {payErr === 'timeout' && txId && (
+              {flow === 'change' && payErr === 'timeout' ? (
+                <button className="acc-btn acc-btn--cta" onClick={() => setPayErr('')}>Проверить ещё раз</button>
+              ) : (
+                <button className="acc-btn acc-btn--cta" onClick={retry}>Оплатить снова</button>
+              )}
+              {payErr === 'timeout' && txId && flow !== 'change' && (
                 <button className="acc-btn" style={{ marginTop: 8 }} onClick={() => { setPayErr(''); }}>
                   Проверить ещё раз
                 </button>
