@@ -192,6 +192,27 @@ function checkout({ tariffCode, periodId, promoCode } = {}) {
 // сам дёрнет ЮKassa, если ещё pending). Возвращает { status, failure_reason }.
 function paymentStatus(txId) { return authed('GET', '/payments/status/' + encodeURIComponent(txId)) }
 
+// ─── Смена тарифа ───────────────────────────────────────────────────────────
+// options — разрешённые переходы с текущей подписки (с зачётом остатка или
+// «временный тариф» mode=overlay). available=false → reason показать как есть.
+function changeOptions() { return authed('GET', '/me/subscription/change/options') }
+// preview — один вариант, пересчитанный на текущий момент (перед подтверждением).
+function changePreview({ tariffId, periodDays } = {}) {
+  return authed('POST', '/me/subscription/change/preview', {
+    tariff_id: tariffId,
+    period_days: periodDays || 0,
+  })
+}
+// change — подтверждение. idempotencyKey — один UUID на попытку (повтор с тем же
+// ключом не спишет второй раз); expectedSurchargeKopeks — доплата из предпросмотра,
+// чтобы сервер не списал другую сумму, если расчёт успел измениться.
+function changeTariff({ tariffId, periodDays, idempotencyKey, expectedSurchargeKopeks } = {}) {
+  const body = { tariff_id: tariffId, period_days: periodDays || 0 }
+  if (idempotencyKey) body.idempotency_key = idempotencyKey
+  if (typeof expectedSurchargeKopeks === 'number') body.expected_surcharge_kopeks = expectedSurchargeKopeks
+  return authed('POST', '/me/subscription/change', body)
+}
+
 // ─── Поддержка ──────────────────────────────────────────────────────────────
 function supportGet() { return authed('GET', '/support/ticket') }
 function supportCreate(diagnostics, logs) {
@@ -222,6 +243,7 @@ module.exports = {
   emailRequest, emailVerify, tgInit, tgPoll, tgVerify, deviceExchange, logout,
   getSubscription, getProfile, getTransactions, getConfig, deleteCard,
   checkout, paymentStatus,
+  changeOptions, changePreview, changeTariff,
   supportGet, supportCreate, supportSend,
   getAiDialog, aiChat, sendLogs,
   getNews,

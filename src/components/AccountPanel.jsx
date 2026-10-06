@@ -113,6 +113,20 @@ export default function AccountPanel({ onClose, onLogout, onSupport, onBilling, 
                 <span className="acc-v">{fmtDate(view.current_period_end)}</span>
               </div>
             )}
+            {view?.overlay && (
+              <>
+                <div className="acc-row">
+                  <span className="acc-k">Сейчас действует</span>
+                  <span className="acc-v">«{view.overlay.tariff_title}» до {fmtDate(view.overlay.until)}</span>
+                </div>
+                {view.overlay.revert_tariff_title && (
+                  <div className="acc-row">
+                    <span className="acc-k">Потом снова</span>
+                    <span className="acc-v">«{view.overlay.revert_tariff_title}»</span>
+                  </div>
+                )}
+              </>
+            )}
             <button className="acc-btn acc-btn--cta" onClick={onBilling || (() => window.api.openExternal(`${SITE}/app/billing`))}>
               {subStatus === 'active' || subStatus === 'trial' ? 'Продлить подписку' : 'Оформить подписку'}
             </button>

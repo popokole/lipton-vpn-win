@@ -3,6 +3,11 @@ import TrafficBar from './TrafficBar'
 
 const BUY_URL = 'https://t.me/liptonvpn_bot'
 
+function fmtDay(s) {
+  try { return new Date(s).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) }
+  catch { return '' }
+}
+
 function TrialCountdown({ expiresAt }) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -75,6 +80,13 @@ function SubCard({ sub, onRefresh, onBuy }) {
       )}
 
       <TrafficBar userInfo={sub.userInfo} />
+
+      {sub.overlay && (
+        <div className="sub-overlay-note">
+          Сейчас «{sub.overlay.tariff_title}» до {fmtDay(sub.overlay.until)}
+          {sub.overlay.revert_tariff_title && <>, потом снова «{sub.overlay.revert_tariff_title}»</>}
+        </div>
+      )}
 
       {!sub.isTrial && (
         <div className="sub-renew-row">

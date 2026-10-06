@@ -274,6 +274,8 @@ async function syncSubscription() {
       servers,
       userInfo,
       status: view.status,
+      // «временный тариф» (overlay): { tariff_title, until, revert_tariff_title } или null
+      overlay: view.overlay || null,
     }
     const subs = [managed, ...others]
     settingsManager.set('subscriptions', subs)
@@ -729,11 +731,33 @@ function setupIPC() {
       const res = await apiClient.checkout(opts || {})
       if (res?.confirmation_url) shell.openExternal(res.confirmation_url)
       return { success: true, ...res }
-    } catch (e) { return { success: false, error: e.message } }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
   })
   ipcMain.handle('payment:status', async (_, txId) => {
     try { return { success: true, ...(await apiClient.paymentStatus(txId)) } }
     catch (e) { return { success: false, error: e.message } }
+  })
+
+  // Смена тарифа: варианты → предпросмотр → подтверждение. payment_url (СБП или
+  // 3DS карты) открываем в браузере, как обычную оплату.
+  ipcMain.handle('account:subscription-view', async () => {
+    try { return { success: true, view: await apiClient.getSubscription() } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('tariff:options', async () => {
+    try { return { success: true, ...(await apiClient.changeOptions()) } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('tariff:preview', async (_, opts) => {
+    try { return { success: true, option: await apiClient.changePreview(opts || {}) } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('tariff:change', async (_, opts) => {
+    try {
+      const res = await apiClient.changeTariff(opts || {})
+      if (res?.status === 'payment_required' && /^https:\/\//i.test(res.payment_url || '')) shell.openExternal(res.payment_url)
+      return { success: true, ...res }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
   })
 
   // Support (чат с поддержкой; логи приложения цепляются при создании тикета)
