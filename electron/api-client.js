@@ -188,6 +188,9 @@ function checkout({ tariffCode, periodId, promoCode } = {}) {
     promo_code: promoCode || '',
   })
 }
+// paymentStatus — активная проверка статуса платежа по transaction id (сервер
+// сам дёрнет ЮKassa, если ещё pending). Возвращает { status, failure_reason }.
+function paymentStatus(txId) { return authed('GET', '/payments/status/' + encodeURIComponent(txId)) }
 
 // ─── Поддержка ──────────────────────────────────────────────────────────────
 function supportGet() { return authed('GET', '/support/ticket') }
@@ -218,7 +221,7 @@ module.exports = {
   isAuthed, getTokens, clearTokens, refresh,
   emailRequest, emailVerify, tgInit, tgPoll, tgVerify, deviceExchange, logout,
   getSubscription, getProfile, getTransactions, getConfig, deleteCard,
-  checkout,
+  checkout, paymentStatus,
   supportGet, supportCreate, supportSend,
   getAiDialog, aiChat, sendLogs,
   getNews,

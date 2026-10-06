@@ -731,6 +731,10 @@ function setupIPC() {
       return { success: true, ...res }
     } catch (e) { return { success: false, error: e.message } }
   })
+  ipcMain.handle('payment:status', async (_, txId) => {
+    try { return { success: true, ...(await apiClient.paymentStatus(txId)) } }
+    catch (e) { return { success: false, error: e.message } }
+  })
 
   // Support (чат с поддержкой; логи приложения цепляются при создании тикета)
   ipcMain.handle('support:get', async () => {

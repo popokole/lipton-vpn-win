@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   accountSync: () => ipcRenderer.invoke('account:sync'),
   trialTestAccess: () => ipcRenderer.invoke('trial:test-access'),
   paymentCheckout: (opts) => ipcRenderer.invoke('payment:checkout', opts),
+  paymentStatus: (txId) => ipcRenderer.invoke('payment:status', txId),
   supportGet: () => ipcRenderer.invoke('support:get'),
   supportSend: (body) => ipcRenderer.invoke('support:send', body),
   supportAttachLogs: () => ipcRenderer.invoke('support:attach-logs'),
