@@ -11,9 +11,9 @@ const net = require('net')
 const http = require('http')
 const { execFileSync, spawn } = require('child_process')
 
-const { parseUri } = require('../electron/subscription-manager')
+const { parseUri, pingAll } = require('../electron/subscription-manager')
 const {
-  generateSingboxConfig, configKey, UnsupportedServerError, FORCE_PROXY_DOMAINS,
+  generateSingboxConfig, configKey, UnsupportedServerError, FORCE_PROXY_DOMAINS, LOCAL_ZONES,
 } = require('../electron/singbox-config')
 const { buildBlockList, _internal: ipx } = require('../electron/firewall-guard')
 
@@ -162,6 +162,39 @@ test('обход РФ выключен: нет rule_set, свои домены �
   assert.ok(config.route.rules.some(r => r.outbound === 'direct' && r.domain_suffix?.includes('yoomoney.ru')))
 })
 
+test('служебные хосты (API, подписка) — напрямую и через dns-direct, ИИ туда не увести', () => {
+  const { config } = gen({ directDomains: ['liptonone.online', 'https://sub.example.net/abc', 'chatgpt.com', 'yookassa.ru'] })
+  const direct = config.route.rules.find(r => r.outbound === 'direct' && r.domain_suffix?.includes('yookassa.ru'))
+  assert.deepEqual(direct.domain_suffix, ['yookassa.ru', 'yoomoney.ru', 'liptonone.online', 'sub.example.net'])
+  const ai = findRule(config, r => r.outbound === 'proxy' && r.domain_suffix?.includes('chatgpt.com'))
+  assert.ok(ai >= 0 && ai < config.route.rules.indexOf(direct))
+  const dnsRule = config.dns.rules.find(r => r.domain_suffix?.includes('liptonone.online'))
+  assert.equal(dnsRule.server, 'dns-direct')
+  assert.ok(!dnsRule.domain_suffix.includes('chatgpt.com'))
+  // без служебных хостов — только оплата
+  const plain = gen().config.route.rules.find(r => r.outbound === 'direct' && r.domain_suffix?.includes('yookassa.ru'))
+  assert.deepEqual(plain.domain_suffix, ['yookassa.ru', 'yoomoney.ru'])
+})
+
+test('DNS: локальные зоны, имена без точки и свои домены — системным DNS (dns-local)', () => {
+  const { config } = gen({ bypassDomains: ['intranet.company.ru'] })
+  const local = config.dns.servers.find(s => s.tag === 'dns-local')
+  assert.deepEqual(local, { type: 'local', tag: 'dns-local' })
+  assert.ok(config.dns.rules.some(r => r.server === 'dns-local' && r.domain_suffix?.includes('lan') && r.domain_suffix.includes('home.arpa')))
+  assert.ok(config.dns.rules.some(r => r.server === 'dns-local' && r.domain_regex?.includes('^[^.]+$')))
+  const user = config.dns.rules.findIndex(r => r.domain_suffix?.includes('intranet.company.ru'))
+  assert.equal(config.dns.rules[user].server, 'dns-local')
+  // свои домены резолвятся раньше правила РФ (иначе .ru ушёл бы на 77.88.8.8)
+  const ru = config.dns.rules.findIndex(r => r.rule_set?.includes('geosite-ru'))
+  assert.ok(user < ru)
+  // ИИ-сервисы — по-прежнему первым правилом через туннель
+  assert.equal(config.dns.rules[0].server, 'dns-remote')
+  // локальные зоны — напрямую
+  assert.ok(config.route.rules.some(r => r.outbound === 'direct' && r.domain_suffix?.includes('local')))
+  // адреса серверов VPN — по-прежнему через 77.88.8.8 (он разрешён правилом Kill Switch)
+  assert.equal(config.route.default_domain_resolver.server, 'dns-direct')
+})
+
 // ─── Outbound'ы ─────────────────────────────────────────────────────────────
 
 test('VLESS Reality Vision: поля uuid/flow/sni/pbk/sid/fp/порт', () => {
@@ -234,9 +267,17 @@ test('proxy: mixed на 127.0.0.1:10809, без TUN-опций, resolve пере
   const { config } = gen({ mode: 'proxy' })
   assert.deepEqual(config.inbounds, [{ type: 'mixed', tag: 'mixed-in', listen: '127.0.0.1', listen_port: 10809 }])
   assert.equal(config.route.auto_detect_interface, undefined)
-  const resolve = findRule(config, r => r.action === 'resolve')
+  const resolve = findRule(config, r => r.action === 'resolve' && !r.domain_suffix)
   const geoip = findRule(config, r => r.rule_set?.includes('geoip-ru'))
   assert.ok(resolve >= 0 && geoip > resolve)
+  // свои домены и локальные имена — резолв системным DNS перед direct
+  const { config: c2 } = gen({ mode: 'proxy', bypassDomains: ['corp.example'] })
+  const lr = findRule(c2, r => r.action === 'resolve' && r.server === 'dns-local')
+  const user = findRule(c2, r => r.outbound === 'direct' && r.domain_suffix?.includes('corp.example'))
+  assert.ok(lr >= 0 && user > lr)
+  assert.deepEqual(c2.route.rules[lr].domain_suffix, [...LOCAL_ZONES, 'corp.example'])
+  // в TUN такого правила нет — у соединения уже IP
+  assert.equal(findRule(gen({ bypassDomains: ['corp.example'] }).config, r => r.action === 'resolve'), -1)
   assert.ok(findRule(config, r => r.ip_version === 6 && r.action === 'reject') >= 0)
   assert.equal(config.dns.strategy, 'ipv4_only')
 })
@@ -244,10 +285,10 @@ test('proxy: mixed на 127.0.0.1:10809, без TUN-опций, resolve пере
 // ─── sing-box check ─────────────────────────────────────────────────────────
 
 const CHECK_CASES = {
-  'tun-bypass': { mode: 'tun' },
+  'tun-bypass': { mode: 'tun', directDomains: ['liptonone.online', 'sub.example.net'], bypassDomains: ['corp.example'] },
   'tun-nobypass': { mode: 'tun', bypassRu: false, bypassDomains: ['corp.example'] },
   'tun-compat': { mode: 'tun', strictRoute: false },
-  'proxy-bypass': { mode: 'proxy', bypassDomains: ['example.ru'], clashApi: { port: 19999, secret: 's' } },
+  'proxy-bypass': { mode: 'proxy', bypassDomains: ['example.ru'], directDomains: ['liptonone.online'], clashApi: { port: 19999, secret: 's' } },
   'proxy-nobypass': { mode: 'proxy', bypassRu: false },
 }
 for (const [name, opts] of Object.entries(CHECK_CASES)) {
@@ -308,6 +349,13 @@ test('proxy: ядро стартует, clash_api отвечает, selector п�
     // До мёртвого сервера проверка задержки не проходит — менеджер не объявит «подключено».
     const d = await clash(apiPort, secret, 'GET', `/proxies/proxy/delay?timeout=1500&url=${encodeURIComponent('https://www.gstatic.com/generate_204')}`)
     assert.notEqual(d.status, 200)
+    // Пинг конкретного сервера (srv-N) и проверка «есть ли интернет» (direct) —
+    // эндпоинты существуют (не 404), мёртвый сервер не даёт 200.
+    const ping = await clash(apiPort, secret, 'GET', `/proxies/${tags[fake[0].id]}/delay?timeout=1500&url=${encodeURIComponent('http://cp.cloudflare.com/generate_204')}`)
+    assert.notEqual(ping.status, 404)
+    assert.notEqual(ping.status, 200)
+    const direct = await clash(apiPort, secret, 'GET', `/proxies/direct/delay?timeout=3000&url=${encodeURIComponent('https://www.gstatic.com/generate_204')}`)
+    assert.notEqual(direct.status, 404)
 
     // mixed-inbound слушает
     await new Promise((resolve, reject) => {
@@ -317,6 +365,16 @@ test('proxy: ядро стартует, clash_api отвечает, selector п�
   } finally {
     proc.kill()
   }
+})
+
+// ─── Пинг серверов ──────────────────────────────────────────────────────────
+
+test('пинг: при подключённом TUN — значения ядра, без прямых TCP-соединений', async () => {
+  const sub = { id: 's1', servers: [{ id: 'a', address: '127.0.0.1', port: 1 }, { id: 'b', address: '127.0.0.1', port: 2 }] }
+  let asked = null
+  const r = await pingAll(sub, [sub], async list => { asked = list.map(s => s.id); return { a: 140 } })
+  assert.deepEqual(asked, ['a', 'b'])
+  assert.deepEqual(r.subscriptions[0].servers.map(s => s.ping), [140, null])
 })
 
 // ─── Kill switch: список блокировки ─────────────────────────────────────────
@@ -342,6 +400,49 @@ test('kill switch: блокируется всё, кроме серверов, D
     assert.ok(!inRanges(list, ip), `не должен блокироваться ${ip}`)
   }
   assert.ok(list.length < 60)
+})
+
+// netsh не вызывается: child_process подменяется до загрузки модуля.
+test('kill switch: правило заранее выключено, при падении ядра — одна команда без delete', async () => {
+  const cp = require('child_process')
+  const orig = { execFile: cp.execFile, execFileSync: cp.execFileSync }
+  const calls = []
+  cp.execFile = (cmd, args, opts, cb) => { calls.push(['async', ...args.slice(2, 4)]); setTimeout(() => cb(null, 'Ok.'), 5) }
+  cp.execFileSync = (cmd, args) => { calls.push(['sync', ...args.slice(2, 4)]); return '' }
+  const modPath = require.resolve('../electron/firewall-guard')
+  delete require.cache[modPath]
+  try {
+    const fw = require('../electron/firewall-guard')
+    await fw.prepare(['203.0.113.17'])
+    assert.equal(fw.isActive(), false)
+    assert.deepEqual(calls.map(c => c.join(' ')), ['async delete rule', 'async add rule'])
+    assert.ok(cp.execFile !== orig.execFile)
+
+    calls.length = 0
+    fw.enableSync(['203.0.113.17'])           // падение ядра
+    assert.equal(fw.isActive(), true)
+    assert.deepEqual(calls.map(c => c.join(' ')), ['sync set rule'])
+
+    // Очередь: disable и enable не перемешиваются, enable не удаляет правило.
+    calls.length = 0
+    const d = fw.disable()
+    const e = fw.enable(['203.0.113.17'])
+    await Promise.all([d, e])
+    assert.equal(fw.isActive(), true)
+    assert.deepEqual(calls.map(c => c.join(' ')), ['async set rule', 'async set rule'])
+
+    calls.length = 0
+    await fw.disable()
+    await fw.disable()                         // повторно — без netsh
+    assert.equal(calls.length, 1)
+    await fw.remove()
+    assert.deepEqual(calls.map(c => c.join(' ')), ['async set rule', 'async delete rule'])
+    assert.equal(fw.isActive(), false)
+  } finally {
+    cp.execFile = orig.execFile
+    cp.execFileSync = orig.execFileSync
+    delete require.cache[modPath]
+  }
 })
 
 // ─── Миграция настроек ──────────────────────────────────────────────────────

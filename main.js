@@ -34,6 +34,7 @@ const vpnManager = {
     return next.connect(server, opts)
   },
   async disconnect() {
+    cancelAutoConnectRetry()
     await (activeCore || pickCore()).disconnect()
   },
   getStatus() {
@@ -55,6 +56,23 @@ const vpnManager = {
     singboxCore.clearProxy()
     if (activeCore === legacyCore) legacyCore.clearProxy()
   },
+  // Запрос приложения не прошёл при «подключено» — проверить, жив ли туннель.
+  checkTunnel() {
+    if (activeCore === singboxCore && singboxCore.getStatus() === 'connected') {
+      singboxCore.checkTunnel().catch(e => console.warn('[VPN] Проверка туннеля:', e.message))
+    }
+  },
+}
+
+// Служебные хосты приложения (API, ссылки подписки и тест-доступа) — в обход
+// туннеля: обновить подписку и оплатить можно, даже если туннель не работает.
+function serviceHosts(subs) {
+  const hosts = new Set()
+  const add = u => { try { hosts.add(new URL(u).hostname) } catch {} }
+  add(apiClient.API_BASE)
+  add(TRIAL_URL)
+  for (const s of subs || []) if (s.managed || s.isTrial) add(s.url)
+  return [...hosts]
 }
 
 // В dev — отдельный userData, чтобы single-instance lock не конфликтовал с
@@ -327,6 +345,7 @@ async function syncSubscription() {
     return { success: true, hasAccess: true, view }
   } catch (e) {
     console.error('[Sync] fetch subscription_url:', e.message)
+    if (!e.status) vpnManager.checkTunnel()
     return { success: false, error: e.message }
   }
 }
@@ -614,6 +633,7 @@ function setupIPC() {
   }))
 
   ipcMain.handle('vpn:connect', async (_, serverId) => {
+    cancelAutoConnectRetry()
     try {
       const settings = settingsManager.getAll()
       let server = null
@@ -923,7 +943,11 @@ function setupIPC() {
       const sub = (settings.subscriptions || []).find(s => s.id === id)
       if (!sub) return { success: false, error: 'Подписка не найдена' }
 
-      const result = await subscriptionManager.pingAll(sub, settings.subscriptions || [])
+      // В TUN прямое соединение из приложения попадает в туннель — меряем через ядро.
+      const viaCore = activeCore === singboxCore && singboxCore.getStatus() === 'connected' && singboxCore.getMode() === 'tun'
+        ? list => singboxCore.serverDelays(list.map(s => s.id))
+        : null
+      const result = await subscriptionManager.pingAll(sub, settings.subscriptions || [], viaCore)
       if (result.success) {
         settingsManager.set('subscriptions', result.subscriptions)
         mainWindow?.webContents.send('sub:updated', result.subscriptions)
@@ -1110,6 +1134,7 @@ function buildConnectOptions(settings) {
     strictRoute: settings.tunStrictRoute !== false,
     // Все серверы подписок — для смены сервера без перезапуска ядра.
     servers: subs.flatMap(s => s.servers || []),
+    directDomains: serviceHosts(subs),
 
     onUnexpectedDisconnect: () => {
       settingsManager.set('activeServerId', null)
@@ -1132,8 +1157,29 @@ function buildConnectOptions(settings) {
 
 // ─── Auto-connect ─────────────────────────────────────────────────────────────
 
-async function doAutoConnect() {
+// При старте Windows сеть часто ещё не поднялась: если сервер не ответил,
+// повторяем с нарастающей паузой (~2,5 мин в сумме). Ручное подключение или
+// отключение пользователем отменяет повторы.
+const AUTO_CONNECT_RETRY_MS = [5000, 10000, 20000, 40000, 60000]
+let autoConnectTimer = null
+let autoConnectGen = 0
+
+function cancelAutoConnectRetry() {
+  autoConnectGen++
+  clearTimeout(autoConnectTimer)
+  autoConnectTimer = null
+}
+
+function isRetryableConnectError(err) {
+  const t = String(err || '').toLowerCase()
+  return t.includes('сервер не отвечает') || t.includes('не ответило вовремя') ||
+    t.includes('завершилось при запуске') || t.includes('enotfound') || t.includes('network')
+}
+
+async function doAutoConnect(attempt = 0) {
+  autoConnectTimer = null
   if (vpnManager.getStatus() !== 'disconnected') return
+  const myGen = autoConnectGen
   const settings = settingsManager.getAll()
   const subs = settings.subscriptions || []
   const serverId = settings.activeServerId || subs.flatMap(s => s.servers || [])[0]?.id
@@ -1146,17 +1192,24 @@ async function doAutoConnect() {
   }
   if (!server) return
 
-  console.log('[AutoConnect] Подключение к:', server.remark || server.address)
+  console.log(`[AutoConnect] Подключение к: ${server.remark || server.address}${attempt ? ` (повтор ${attempt}/${AUTO_CONNECT_RETRY_MS.length})` : ''}`)
   mainWindow?.webContents.send('vpn:status-update', { status: 'connecting' })
 
   const result = await vpnManager.connect(server, buildConnectOptions(settings))
+  if (myGen !== autoConnectGen) return // пользователь сам подключился/отключился
 
   if (result.success) {
     settingsManager.set('activeServerId', serverId)
     refreshTray('connected')
     mainWindow?.webContents.send('vpn:status-update', { status: 'connected', serverId })
-  } else {
-    mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+    return
+  }
+  if (vpnManager.getStatus() !== 'disconnected') return
+  mainWindow?.webContents.send('vpn:status-update', { status: vpnManager.isKillSwitchEngaged() ? 'kill-switch' : 'disconnected' })
+  if (attempt < AUTO_CONNECT_RETRY_MS.length && isRetryableConnectError(result.error)) {
+    const delay = AUTO_CONNECT_RETRY_MS[attempt]
+    console.warn(`[AutoConnect] Не удалось (${result.error}). Повтор через ${delay / 1000} с`)
+    autoConnectTimer = setTimeout(() => doAutoConnect(attempt + 1), delay)
   }
 }
 
@@ -1223,6 +1276,9 @@ app.whenReady().then(async () => {
 
   const deepLinkArg = process.argv.slice(1).find(a => a.startsWith('liptonapp:') || a.startsWith('lipton:') || a.startsWith('liptonvpn:'))
   if (deepLinkArg) await handleDeepLink(deepLinkArg)
+
+  // Запрос к API не прошёл (сеть/таймаут) при «подключено» — проверить туннель.
+  apiClient.onNetworkError(() => vpnManager.checkTunnel())
 
   // Init kill switch from saved settings
   vpnManager.setKillSwitch(settingsManager.get('killSwitch') === true)

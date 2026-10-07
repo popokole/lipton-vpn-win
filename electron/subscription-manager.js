@@ -264,9 +264,13 @@ function pingServer(address, port) {
   })
 }
 
-async function pingAll(sub, subscriptions) {
+// pingFn(servers) → { [id]: мс | null } — замер через ядро VPN (в TUN прямое
+// TCP-соединение из приложения уходит в туннель и показывает 0–2 мс у любого сервера).
+async function pingAll(sub, subscriptions, pingFn = null) {
+  const list = sub.servers || []
+  const viaCore = pingFn ? await pingFn(list) : null
   const servers = await Promise.all(
-    (sub.servers || []).map(async s => ({ ...s, ping: await pingServer(s.address, s.port) }))
+    list.map(async s => ({ ...s, ping: viaCore ? (viaCore[s.id] ?? null) : await pingServer(s.address, s.port) }))
   )
   const updated = subscriptions.map(s => s.id === sub.id ? { ...s, servers } : s)
   return { success: true, subscriptions: updated }

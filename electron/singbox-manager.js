@@ -7,9 +7,12 @@
 //                  Если ядро уже работает с тем же конфигом — только переключает
 //                  selector через clash_api (без перезапуска и без окна утечки).
 //   супервизор   — при неожиданном выходе перезапускает с тем же конфигом
-//                  (бэкофф, не больше MAX_RESTARTS за минуту). В TUN на время
-//                  перезапуска включается блокировка Брандмауэра (firewall-guard),
-//                  чтобы трафик не ушёл напрямую.
+//                  (бэкофф, не больше MAX_RESTARTS за минуту). В TUN правило
+//                  Брандмауэра (firewall-guard) создаётся выключенным при
+//                  подключении; при падении ядра оно первым делом включается
+//                  одной синхронной командой netsh и держится до перезапуска.
+//                  Окно между смертью процесса и срабатыванием правила — время
+//                  одного вызова netsh (~0,1–0,4 с).
 //   disconnect() — останавливает процесс. auto_route/strict_route sing-box держит
 //                  в Wintun-адаптере и динамическом WFP-сеансе процесса: они
 //                  снимаются вместе с процессом, в т.ч. при аварийном завершении.
@@ -34,6 +37,11 @@ const BACKOFF_MS = [500, 1000, 2000, 4000, 8000]
 const READY_TIMEOUT_MS = 15_000
 const PROBE_URLS = ['https://www.gstatic.com/generate_204', 'https://cp.cloudflare.com/generate_204']
 const PROBE_TIMEOUT_MS = 6000
+// Пинг серверов через ядро (в TUN прямое TCP-соединение из приложения попадает
+// в туннель и «отвечает» за 0–2 мс). Обычный HTTP — меньше рукопожатий, ближе к RTT.
+const PING_URL = 'http://cp.cloudflare.com/generate_204'
+const PING_TIMEOUT_MS = 5000
+const TUNNEL_CHECK_INTERVAL_MS = 30_000
 
 const st = {
   proc: null,
@@ -49,6 +57,7 @@ const st = {
   key: null,
   clash: null,              // { port, secret }
   selectedTag: null,
+  tags: {},                 // id сервера → тег outbound в работающем конфиге
   allowIps: [],
   callbacks: {},
   restartTimes: [],
@@ -133,12 +142,15 @@ function runCheck(exe, configPath, workDir) {
   })
 }
 
-async function resolveAllowIps(servers) {
+// IP, которые блокировка Брандмауэра пропускает: серверы VPN, DNS для их резолва
+// и служебные хосты приложения (API, подписка) — чтобы при включённом Kill Switch
+// можно было обновить подписку и оплатить.
+async function resolveAllowIps(servers, extraHosts = []) {
   const ips = new Set([DNS_DIRECT_IP])
   const resolver = new dns.promises.Resolver({ timeout: 2000, tries: 1 })
   try { resolver.setServers([DNS_DIRECT_IP]) } catch {}
-  await Promise.all((servers || []).map(async s => {
-    const host = s && s.address
+  const hosts = [...(servers || []).map(s => s && s.address), ...(extraHosts || [])]
+  await Promise.all(hosts.map(async host => {
     if (!host) return
     if (net.isIP(host)) { ips.add(host); return }
     try { (await dns.promises.lookup(host, { all: true, family: 4 })).forEach(r => ips.add(r.address)) } catch {}
@@ -220,10 +232,12 @@ async function stopProc() {
   removePid()
 }
 
-async function probe() {
-  for (const url of PROBE_URLS) {
-    const q = `/proxies/proxy/delay?timeout=${PROBE_TIMEOUT_MS}&url=${encodeURIComponent(url)}`
-    const r = await clashRequest('GET', q, null, PROBE_TIMEOUT_MS + 2000)
+// Проверка задержки через outbound ядра (clash_api). tag: 'proxy' — выбранный
+// сервер, 'direct' — напрямую (есть ли интернет вообще), 'srv-N' — конкретный сервер.
+async function probe(tag = 'proxy', urls = PROBE_URLS, timeout = PROBE_TIMEOUT_MS) {
+  for (const url of urls) {
+    const q = `/proxies/${encodeURIComponent(tag)}/delay?timeout=${timeout}&url=${encodeURIComponent(url)}`
+    const r = await clashRequest('GET', q, null, timeout + 2000)
     if (r.status === 200) {
       try { return { ok: true, delay: JSON.parse(r.body).delay } } catch { return { ok: true } }
     }
@@ -284,10 +298,15 @@ async function startProc() {
 function onExit(proc, code) {
   if (proc !== st.proc) return // намеренная остановка или устаревший процесс
   st.proc = null
+  if (proc === st.startingProc) { removePid(); return } // ошибку запуска вернёт startProc
+  const protecting = st.desired && (st.status === 'connected' || st.status === 'reconnecting')
+  // В TUN вместе с процессом исчезли strict_route и маршруты Wintun — трафик уже
+  // идёт напрямую. Первым делом (до статусов и колбэков) включаем заранее
+  // созданное правило Брандмауэра одной синхронной командой.
+  if (protecting && st.mode === 'tun' && !firewall.isActive()) firewall.enableSync(st.allowIps)
   removePid()
-  if (proc === st.startingProc) return // ошибку запуска вернёт startProc
   if (!st.desired) { setStatus('disconnected'); return }
-  if (st.status !== 'connected' && st.status !== 'reconnecting') return
+  if (!protecting) return
   console.warn(`[VPN] Ядро неожиданно завершилось (код ${code})${st.lastError ? ': ' + st.lastError : ''}`)
   scheduleRestart()
 }
@@ -304,10 +323,11 @@ async function scheduleRestart() {
   setStatus('reconnecting')
   if (!wasReconnecting) st.callbacks.onReconnecting?.()
 
-  // В TUN без ядра трафик пошёл бы напрямую — закрываем его до перезапуска.
-  // В режиме прокси системный прокси остаётся на 127.0.0.1 — без ядра соединения
-  // просто не проходят, напрямую ничего не уходит.
-  if (st.mode === 'tun' && !firewall.isActive()) await firewall.enable(st.allowIps)
+  // В TUN без ядра трафик пошёл бы напрямую — блокировка уже включена в onExit;
+  // здесь — через очередь, чтобы её не перебила выполнявшаяся в этот момент
+  // операция с правилом. В режиме прокси системный прокси остаётся на 127.0.0.1 —
+  // без ядра соединения просто не проходят, напрямую ничего не уходит.
+  if (st.mode === 'tun') await firewall.enable(st.allowIps)
 
   console.log(`[VPN] Перезапуск ядра через ${delay} мс (попытка ${st.restartTimes.length}/${MAX_RESTARTS})`)
   const ep = st.epoch
@@ -346,7 +366,7 @@ async function giveUp() {
 async function engageKillSwitch() {
   st.killSwitchEngaged = true
   if (st.mode === 'tun') {
-    if (!firewall.isActive()) await firewall.enable(st.allowIps)
+    await firewall.enable(st.allowIps)
   } else {
     systemProxy.setProxy('127.0.0.1', 1)
   }
@@ -355,7 +375,7 @@ async function engageKillSwitch() {
 
 async function releaseNetwork() {
   st.killSwitchEngaged = false
-  await firewall.disable()
+  await firewall.remove()
   if (st.mode === 'proxy' || ourProxyActive()) systemProxy.clearProxy()
 }
 
@@ -430,6 +450,7 @@ async function doConnect(server, opts = {}) {
       const p = await probe()
       if (p.ok) {
         st.selectedTag = gen.selectedTag
+        st.tags = gen.tags
         fs.writeFileSync(st.configPath, JSON.stringify(gen.config, null, 2), 'utf-8') // для перезапусков супервизора
         console.log(`[VPN] Сервер переключён без перезапуска ядра (${gen.selectedTag})`)
         return { success: true }
@@ -450,7 +471,7 @@ async function doConnect(server, opts = {}) {
     return { success: false, error: 'Ошибка конфигурации VPN: ' + friendlyError(chk.error) }
   }
 
-  const allowIps = await resolveAllowIps(servers)
+  const allowIps = await resolveAllowIps(servers, opts.directDomains)
   if (st.gen !== gen0) return cancelled
   // Дальше подключением управляет этот вызов — отложенный перезапуск супервизора отменяем.
   st.epoch++
@@ -460,26 +481,44 @@ async function doConnect(server, opts = {}) {
   st.desired = true
   st.restartTimes = []
 
+  // Отмена (disconnect() во время любого await ниже): ничего не поднимаем,
+  // снимаем то, что успели поставить, и оставляем статус «отключено».
+  const bail = async () => {
+    if (!st.desired) {
+      await stopProc()
+      await releaseNetwork()
+      setStatus('disconnected')
+    }
+    return cancelled
+  }
+
   // ── Перезапуск работающего ядра: в TUN держим блокировку, пока нет нового ──
   if (wasProtecting && (prevMode === 'tun' || mode === 'tun')) await firewall.enable(st.allowIps)
   else if (firewall.isActive()) await firewall.enable(st.allowIps) // Kill Switch: обновить список серверов
+  else if (mode === 'tun') await firewall.prepare(st.allowIps)     // правило заранее, выключенным
+  if (st.gen !== gen0) return bail()
   if (st.proc) await stopProc()
+  if (st.gen !== gen0) return bail()
 
   st.mode = mode
   st.httpPort = opts.httpPort || 10809
   st.clash = clash
   st.key = key
   st.selectedTag = gen.selectedTag
+  st.tags = gen.tags
   setStatus('connecting')
 
   const r = await startProc()
-  if (!st.desired || st.gen !== gen0) { await stopProc(); return cancelled }
+  if (!st.desired || st.gen !== gen0) return bail()
 
   if (r.ok) {
     if (mode === 'proxy') systemProxy.setProxy('127.0.0.1', st.httpPort)
     else if (ourProxyActive()) systemProxy.clearProxy()
     st.killSwitchEngaged = false
-    await firewall.disable()
+    // TUN: правило остаётся выключенным — на случай падения ядра.
+    if (mode === 'tun') await firewall.disable()
+    else await firewall.remove()
+    if (!st.desired || st.gen !== gen0) return bail()
     setStatus('connected')
     console.log(`[VPN] Подключено (${mode === 'tun' ? 'TUN' : 'proxy'})`)
     return { success: true }
@@ -535,8 +574,59 @@ function setKillSwitch(enabled) {
 function clearProxy() {
   if (st.desired) return
   st.killSwitchEngaged = false
-  firewall.disable()
+  firewall.remove()
   if (ourProxyActive()) systemProxy.clearProxy()
+}
+
+// ─── Проверка живого туннеля и пинг через ядро ───────────────────────────────
+
+let tunnelCheck = null
+let lastTunnelCheck = 0
+
+/**
+ * Вызывается, когда запрос приложения (API, подписка) не прошёл при статусе
+ * «подключено». Если через сервер ничего не проходит, а напрямую интернет есть —
+ * туннель мёртв (ключ отозван, сервер недоступен): ядро перезапускается
+ * супервизором, а если не поднимется — VPN отключается (или включается Kill Switch).
+ * Без интернета ничего не делает.
+ */
+function checkTunnel() {
+  if (tunnelCheck) return tunnelCheck
+  if (st.status !== 'connected' || !st.proc || Date.now() - lastTunnelCheck < TUNNEL_CHECK_INTERVAL_MS) {
+    return Promise.resolve({ ok: true, skipped: true })
+  }
+  lastTunnelCheck = Date.now()
+  const proc = st.proc
+  tunnelCheck = (async () => {
+    if ((await probe()).ok) return { ok: true }
+    await sleep(2000)
+    if ((await probe()).ok) return { ok: true }
+    if (!(await probe('direct')).ok) {
+      console.warn('[VPN] Нет интернета — туннель не проверить')
+      return { ok: false, reason: 'network' }
+    }
+    if (st.proc !== proc || st.status !== 'connected') return { ok: false, reason: 'changed' }
+    console.warn('[VPN] Через сервер ничего не проходит, хотя интернет есть — перезапуск ядра')
+    try { proc.kill() } catch {} // onExit → блокировка (TUN) → супервизор
+    return { ok: false, reason: 'tunnel' }
+  })().finally(() => { tunnelCheck = null })
+  return tunnelCheck
+}
+
+/**
+ * Задержка до серверов через ядро (clash_api). null — ядро не подключено.
+ * @param {string[]} ids id серверов
+ * @returns {Promise<Object<string, number|null>|null>}
+ */
+async function serverDelays(ids) {
+  if (st.status !== 'connected' || !st.proc || !st.clash) return null
+  const out = {}
+  await Promise.all((ids || []).map(async id => {
+    const tag = st.tags[id]
+    const r = tag ? await probe(tag, [PING_URL], PING_TIMEOUT_MS) : { ok: false }
+    out[id] = r.ok && typeof r.delay === 'number' ? r.delay : null
+  }))
+  return out
 }
 
 // Синхронная аварийная очистка — для process.on('exit').
@@ -548,7 +638,7 @@ function emergencyCleanupSync() {
     try { execFileSync('taskkill', ['/F', '/PID', String(proc.pid)], { stdio: 'ignore', windowsHide: true, timeout: 5000 }) } catch {}
   }
   removePid()
-  if (firewall.isActive()) firewall.disableSync()
+  if (st.mode === 'tun' || firewall.isActive()) firewall.disableSync()
   if (st.mode === 'proxy' && ourProxyActive()) systemProxy.clearProxy()
 }
 
@@ -594,4 +684,6 @@ module.exports = {
   emergencyCleanupSync,
   cleanupStale,
   findSingbox,
+  checkTunnel,
+  serverDelays,
 }

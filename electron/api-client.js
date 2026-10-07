@@ -32,6 +32,13 @@ function isAuthed() {
 
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 
+// Сетевая ошибка запроса (не HTTP-ответ) — main.js проверяет, жив ли туннель VPN.
+let networkErrorHandler = null
+function onNetworkError(fn) { networkErrorHandler = fn }
+function notifyNetworkError() {
+  try { networkErrorHandler?.() } catch {}
+}
+
 function requestRaw(method, path, { body, token } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(API_BASE + path)
@@ -64,8 +71,8 @@ function requestRaw(method, path, { body, token } = {}) {
         resolve({ status: res.statusCode, json })
       })
     })
-    req.on('error', reject)
-    req.on('timeout', () => { req.destroy(); reject(new Error('Таймаут запроса')) })
+    req.on('error', e => { notifyNetworkError(); reject(e) })
+    req.on('timeout', () => { req.destroy(); notifyNetworkError(); reject(new Error('Таймаут запроса')) })
     if (payload) req.write(payload)
     req.end()
   })
@@ -247,4 +254,5 @@ module.exports = {
   supportGet, supportCreate, supportSend,
   getAiDialog, aiChat, sendLogs,
   getNews,
+  onNetworkError,
 }

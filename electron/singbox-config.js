@@ -32,6 +32,11 @@ const FORCE_PROXY_DOMAINS = [
 // Оплата — всегда напрямую с российского IP (ЮKassa / YooMoney), независимо от «Обхода РФ».
 const FORCE_DIRECT_DOMAINS = ['yookassa.ru', 'yoomoney.ru']
 
+// Локальные и обратные зоны: имена роутера, домашней сети, корпоративного
+// AD/интранета знает только DNS текущей сети — резолвим системным DNS (dns-local),
+// а не Яндексом/Cloudflare.
+const LOCAL_ZONES = ['local', 'lan', 'localdomain', 'home.arpa', 'internal', 'intranet', 'corp', 'in-addr.arpa', 'ip6.arpa']
+
 // Российские зоны и популярные сервисы вне .ru (дополнение к geosite-category-ru).
 const RU_SUFFIXES = ['ru', 'su', 'xn--p1ai']
 const RU_EXTRA_DOMAINS = [
@@ -185,6 +190,8 @@ function serverOutbound(s, tag) {
  *   httpPort        порт mixed-inbound в режиме proxy (10809)
  *   bypassRu        «Обход РФ» (по умолчанию true)
  *   bypassDomains   свои домены в обход VPN
+ *   directDomains   служебные хосты приложения (API, ссылка подписки) — всегда
+ *                   напрямую: запросы приложения не должны зависеть от туннеля
  *   rulesDir        папка с geosite-category-ru.srs / geoip-ru.srs
  *   strictRoute     strict_route для TUN (по умолчанию true)
  *   stack           стек TUN (mixed)
@@ -197,6 +204,9 @@ function generateSingboxConfig(servers, opts = {}) {
   const mode = opts.mode === 'proxy' ? 'proxy' : 'tun'
   const bypassRu = opts.bypassRu !== false
   const bypassDomains = normalizeDomains(opts.bypassDomains).filter(d => !FORCE_PROXY_DOMAINS.some(p => d === p || d.endsWith('.' + p)))
+  const serviceDomains = normalizeDomains(opts.directDomains)
+    .filter(d => !FORCE_PROXY_DOMAINS.some(p => d === p || d.endsWith('.' + p)) && !FORCE_DIRECT_DOMAINS.includes(d))
+  const directDomains = [...FORCE_DIRECT_DOMAINS, ...serviceDomains]
   const httpPort = Number(opts.httpPort) || DEFAULT_HTTP_PORT
   const rulesDir = opts.rulesDir || path.join(__dirname, '..', 'resources', 'sing-box', 'rules')
 
@@ -226,9 +236,14 @@ function generateSingboxConfig(servers, opts = {}) {
   const selectedTag = (opts.selectedId != null && tags[opts.selectedId]) || serverOutbounds[0].tag
 
   // ── DNS ──
+  // dns-direct (77.88.8.8) — оплата, служебные хосты, РФ и адреса серверов VPN;
+  // dns-local (системный DNS текущей сети) — локальные/корпоративные имена и свои
+  // домены в обход (их часто знает только DNS офиса или провайдера).
   const dnsRules = [{ domain_suffix: FORCE_PROXY_DOMAINS, server: 'dns-remote' }]
-  dnsRules.push({ domain_suffix: FORCE_DIRECT_DOMAINS, server: 'dns-direct' })
-  if (bypassDomains.length) dnsRules.push({ domain_suffix: bypassDomains, server: 'dns-direct' })
+  dnsRules.push({ domain_suffix: directDomains, server: 'dns-direct' })
+  dnsRules.push({ domain_suffix: LOCAL_ZONES, server: 'dns-local' })
+  dnsRules.push({ domain_regex: ['^[^.]+$'], server: 'dns-local' }) // имена без точки (роутер, ПК в сети)
+  if (bypassDomains.length) dnsRules.push({ domain_suffix: bypassDomains, server: 'dns-local' })
   if (bypassRu) {
     dnsRules.push({ rule_set: ['geosite-ru'], server: 'dns-direct' })
     dnsRules.push({ domain_suffix: [...RU_SUFFIXES, ...RU_EXTRA_DOMAINS], server: 'dns-direct' })
@@ -238,6 +253,7 @@ function generateSingboxConfig(servers, opts = {}) {
     servers: [
       { ...DNS_REMOTE },
       { type: 'udp', tag: 'dns-direct', server: DNS_DIRECT_IP },
+      { type: 'local', tag: 'dns-local' },
     ],
     rules: dnsRules,
     final: 'dns-remote',
@@ -270,8 +286,15 @@ function generateSingboxConfig(servers, opts = {}) {
     { ip_version: 6, action: 'reject' },
     { ip_is_private: true, outbound: 'direct' },
     { domain_suffix: FORCE_PROXY_DOMAINS, outbound: 'proxy' },
-    { domain_suffix: FORCE_DIRECT_DOMAINS, outbound: 'direct' },
+    { domain_suffix: directDomains, outbound: 'direct' },
   ]
+  // В режиме прокси приходит домен: локальные имена и свои домены резолвим
+  // системным DNS (иначе direct резолвил бы их через 77.88.8.8). В TUN у
+  // соединения уже есть IP — приложение получило его через dns-local.
+  if (mode === 'proxy') {
+    rules.push({ domain_suffix: [...LOCAL_ZONES, ...bypassDomains], action: 'resolve', server: 'dns-local', strategy: 'ipv4_only' })
+  }
+  rules.push({ domain_suffix: LOCAL_ZONES, outbound: 'direct' })
   if (bypassDomains.length) rules.push({ domain_suffix: bypassDomains, outbound: 'direct' })
 
   const ruleSets = []
@@ -345,6 +368,7 @@ module.exports = {
   UnsupportedServerError,
   FORCE_PROXY_DOMAINS,
   FORCE_DIRECT_DOMAINS,
+  LOCAL_ZONES,
   TUN_INTERFACE,
   DNS_DIRECT_IP,
 }

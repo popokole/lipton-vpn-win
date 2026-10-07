@@ -4,8 +4,10 @@
 // VPN, DNS для резолва сервера, loopback и локальной сети.
 //
 // Пока sing-box жив, утечки закрывает его strict_route (динамический WFP-сеанс,
-// снимается вместе с процессом) — поэтому само правило держится только в окне
-// без ядра и снимается сразу после готовности нового процесса.
+// снимается вместе с процессом) — поэтому правило включено только в окне без
+// ядра и выключается сразу после готовности нового процесса. Само правило
+// (выключенное) существует всё время, пока VPN в TUN включён: при падении ядра
+// его остаётся включить одной синхронной командой.
 
 const { execFile, execFileSync } = require('child_process')
 
@@ -95,6 +97,11 @@ function buildBlockList(allowIps = []) {
 }
 
 // ─── netsh ───────────────────────────────────────────────────────────────────
+//
+// Правило создаётся заранее (выключенным) при подключении в TUN и живёт, пока
+// VPN включён: при падении ядра его остаётся только включить одной командой
+// netsh («set rule … enable=yes»), без delete/add. Все асинхронные операции идут
+// через одну очередь, чтобы delete и add из разных вызовов не перемешивались.
 
 function run(args) {
   return new Promise(resolve => {
@@ -104,37 +111,128 @@ function run(args) {
   })
 }
 
-let active = false
+function runSync(args) {
+  try {
+    execFileSync('netsh', args, { windowsHide: true, stdio: 'ignore', timeout: 5000 })
+    return true
+  } catch {
+    return false
+  }
+}
 
-async function enable(allowIps = []) {
-  const list = buildBlockList(allowIps)
-  await run(['advfirewall', 'firewall', 'delete', 'rule', `name=${RULE_NAME}`])
-  const r = await run([
-    'advfirewall', 'firewall', 'add', 'rule',
-    `name=${RULE_NAME}`, 'dir=out', 'action=block', 'enable=yes', 'profile=any',
-    `remoteip=${list.join(',')}`,
-  ])
-  active = r.ok
-  if (r.ok) console.log(`[KillSwitch] Блокировка трафика мимо VPN включена (разрешено: ${allowIps.join(', ') || '—'})`)
-  else console.error('[KillSwitch] Не удалось включить блокировку:', r.err?.message || r.out)
+const RULE = `name=${RULE_NAME}`
+
+let active = false   // правило включено (трафик мимо VPN блокируется)
+let exists = false   // правило создано этим процессом
+let listKey = ''     // remoteip, с которым создано правило
+
+let queue = Promise.resolve()
+function enqueue(fn) {
+  const p = queue.then(fn, fn)
+  queue = p.catch(() => {})
+  return p
+}
+
+function addArgs(remote, enabled) {
+  return ['advfirewall', 'firewall', 'add', 'rule', RULE, 'dir=out', 'action=block',
+    `enable=${enabled ? 'yes' : 'no'}`, 'profile=any', `remoteip=${remote}`]
+}
+
+// Привести правило к нужному состоянию: создать, обновить список адресов и/или
+// включить/выключить. Возвращает true при успехе.
+async function apply(allowIps, enabled) {
+  const remote = buildBlockList(allowIps).join(',')
+  if (exists) {
+    const args = ['advfirewall', 'firewall', 'set', 'rule', RULE, 'new', `enable=${enabled ? 'yes' : 'no'}`]
+    if (remote !== listKey) args.push(`remoteip=${remote}`)
+    const r = await run(args)
+    if (r.ok) { listKey = remote; return true }
+    exists = false // правило удалили снаружи — создаём заново
+  }
+  await run(['advfirewall', 'firewall', 'delete', 'rule', RULE])
+  const r = await run(addArgs(remote, enabled))
+  exists = r.ok
+  listKey = r.ok ? remote : ''
+  if (!r.ok) console.error('[KillSwitch] Не удалось создать правило брандмауэра:', r.err?.message || r.out)
   return r.ok
 }
 
-async function disable() {
-  const r = await run(['advfirewall', 'firewall', 'delete', 'rule', `name=${RULE_NAME}`])
-  if (active || r.ok) console.log('[KillSwitch] Блокировка трафика снята')
-  active = false
-  return true
+/** Создать правило заранее, выключенным (или обновить список, не меняя состояние). */
+function prepare(allowIps = []) {
+  return enqueue(async () => apply(allowIps, active))
 }
 
-// Синхронно — для аварийного выхода процесса.
+/** Включить блокировку трафика мимо VPN. */
+function enable(allowIps = []) {
+  return enqueue(async () => {
+    const ok = await apply(allowIps, true)
+    if (ok && !active) console.log(`[KillSwitch] Блокировка трафика мимо VPN включена (разрешено: ${allowIps.join(', ') || '—'})`)
+    active = ok || active
+    return ok
+  })
+}
+
+/** Выключить блокировку, оставив правило (ядро снова защищает трафик). */
+function disable() {
+  return enqueue(async () => {
+    if (!exists) { active = false; return true }
+    if (!active) return true // правило уже выключено (создано через prepare)
+    const r =await run(['advfirewall', 'firewall', 'set', 'rule', RULE, 'new', 'enable=no'])
+    if (!r.ok) {
+      await run(['advfirewall', 'firewall', 'delete', 'rule', RULE])
+      exists = false
+      listKey = ''
+    }
+    if (active) console.log('[KillSwitch] Блокировка трафика снята')
+    active = false
+    return true
+  })
+}
+
+/** Удалить правило совсем (VPN выключен). */
+function remove() {
+  return enqueue(async () => {
+    const r = await run(['advfirewall', 'firewall', 'delete', 'rule', RULE])
+    if (active) console.log('[KillSwitch] Блокировка трафика снята')
+    else if (r.ok && exists) console.log('[KillSwitch] Правило брандмауэра удалено')
+    active = false
+    exists = false
+    listKey = ''
+    return true
+  })
+}
+
+// Синхронно, одной командой — первым делом при падении ядра в TUN, пока
+// strict_route и маршруты Wintun уже исчезли, а новое ядро ещё не поднято.
+function enableSync(allowIps = []) {
+  let ok = exists && runSync(['advfirewall', 'firewall', 'set', 'rule', RULE, 'new', 'enable=yes'])
+  if (!ok) {
+    const remote = buildBlockList(allowIps).join(',')
+    runSync(['advfirewall', 'firewall', 'delete', 'rule', RULE])
+    ok = runSync(addArgs(remote, true))
+    exists = ok
+    listKey = ok ? remote : ''
+  }
+  if (ok) {
+    active = true
+    console.log('[KillSwitch] Ядро упало — трафик мимо VPN заблокирован')
+  } else {
+    console.error('[KillSwitch] Не удалось включить блокировку при падении ядра')
+  }
+  return ok
+}
+
+// Синхронно — для аварийного выхода процесса и очистки при старте: удаляет правило.
 function disableSync() {
-  try {
-    execFileSync('netsh', ['advfirewall', 'firewall', 'delete', 'rule', `name=${RULE_NAME}`], { windowsHide: true, stdio: 'ignore', timeout: 5000 })
-  } catch { /* правила могло не быть */ }
+  runSync(['advfirewall', 'firewall', 'delete', 'rule', RULE])
   active = false
+  exists = false
+  listKey = ''
 }
 
 function isActive() { return active }
 
-module.exports = { enable, disable, disableSync, isActive, buildBlockList, RULE_NAME, _internal: { ipv4ToNum, ipv6ToNum, numToIpv6, cidrRange, complement } }
+module.exports = {
+  prepare, enable, disable, remove, enableSync, disableSync, isActive, buildBlockList, RULE_NAME,
+  _internal: { ipv4ToNum, ipv6ToNum, numToIpv6, cidrRange, complement },
+}
