@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   openTelegram: (link) => ipcRenderer.invoke('app:open-telegram', link),
   openArticles: () => ipcRenderer.invoke('articles:open'),
   getVersion: () => ipcRenderer.invoke('app:version'),
+  getLicenseText: (name) => ipcRenderer.invoke('app:license-text', name),
 
   // Auth
   authState: () => ipcRenderer.invoke('auth:state'),
@@ -46,6 +47,7 @@ contextBridge.exposeInMainWorld('api', {
   vpnConnect: (serverId) => ipcRenderer.invoke('vpn:connect', serverId),
   vpnDisconnect: () => ipcRenderer.invoke('vpn:disconnect'),
   vpnStatus: () => ipcRenderer.invoke('vpn:status'),
+  vpnCheckConnection: () => ipcRenderer.invoke('vpn:check-connection'),
   onVpnStatus: (cb) => {
     ipcRenderer.on('vpn:status-update', (_, data) => cb(data))
     return () => ipcRenderer.removeAllListeners('vpn:status-update')

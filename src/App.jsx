@@ -13,6 +13,7 @@ import NewsPanel from './components/NewsPanel'
 import BillingPanel from './components/BillingPanel'
 import HistoryPanel from './components/HistoryPanel'
 import SymbolField from './components/SymbolField'
+import ConnectionCheckPanel from './components/ConnectionCheckPanel'
 
 function Toast({ toasts, onRemove }) {
   if (!toasts.length) return null
@@ -65,6 +66,7 @@ export default function App() {
   const [showBilling, setShowBilling] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showNews, setShowNews] = useState(false)
+  const [showCheck, setShowCheck] = useState(false)
   const [pinging, setPinging] = useState(false)
   const [version, setVersion] = useState('')
   const [loading, setLoading] = useState(true)
@@ -278,8 +280,11 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           onUpdateFound={() => setShowSettings(false)}
           onLogout={handleLogout}
+          vpnStatus={vpnStatus}
+          onCheckConnection={() => { setShowSettings(false); setShowCheck(true) }}
         />
       )}
+      {showCheck && <ConnectionCheckPanel onClose={() => setShowCheck(false)} />}
       {showAccount && (
         <AccountPanel
           onClose={() => setShowAccount(false)}
@@ -369,6 +374,16 @@ export default function App() {
                 ? `${allServers.length} серверов доступно`
                 : 'Добавьте подписку'}
           </span>
+          {vpnStatus === 'connected' && (
+            <button className="check-pill" onClick={() => setShowCheck(true)}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <polyline points="9 12 11 14 15 10"/>
+              </svg>
+              Проверка соединения
+            </button>
+          )}
         </div>
 
         <div className="divider" />

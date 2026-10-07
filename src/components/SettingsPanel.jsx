@@ -1,8 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import BypassDomainsScreen from './BypassDomainsScreen'
+import LicensesScreen from './LicensesScreen'
 
-export default function SettingsPanel({ onClose, onLogout }) {
+export default function SettingsPanel({ onClose, onLogout, onCheckConnection, vpnStatus }) {
   const [bypassScreen, setBypassScreen] = useState(false)
+  const [licensesScreen, setLicensesScreen] = useState(false)
+  const [modeChanged, setModeChanged] = useState(false)
+  const [version, setVersion] = useState('')
   const [autostart,   setAutostart]   = useState(false)
   const [bypassRu,    setBypassRu]    = useState(true)
   const [killSwitch,  setKillSwitch]  = useState(false)
@@ -25,6 +29,7 @@ export default function SettingsPanel({ onClose, onLogout }) {
     window.api.getKillSwitch().then(v  => setKillSwitch(!!v))
     window.api.getAutoConnect().then(v => setAutoConnect(!!v))
     window.api.getTunMode().then(v     => setTunMode(!!v))
+    window.api.getVersion().then(v     => setVersion(v || ''))
     loadLogs()
   }, [])
 
@@ -67,10 +72,11 @@ export default function SettingsPanel({ onClose, onLogout }) {
     await window.api.setAutoConnect(next)
   }
 
-  async function toggleTunMode() {
-    const next = !tunMode
-    setTunMode(next)
-    await window.api.setTunMode(next)
+  async function selectMode(tun) {
+    if (tun === tunMode) return
+    setTunMode(tun)
+    setModeChanged(true)
+    await window.api.setTunMode(tun)
   }
 
   async function handleFlushDns() {
@@ -113,6 +119,19 @@ export default function SettingsPanel({ onClose, onLogout }) {
       setCheckStatus('error')
       setTimeout(() => setCheckStatus(null), 3000)
     }
+  }
+
+  if (licensesScreen) {
+    return (
+      <div
+        className={`settings-overlay${closing ? ' settings-overlay--closing' : ''}`}
+        onClick={e => e.target === e.currentTarget && close()}
+      >
+        <div className={`settings-panel${closing ? ' settings-panel--closing' : ''}`}>
+          <LicensesScreen onBack={() => setLicensesScreen(false)} />
+        </div>
+      </div>
+    )
   }
 
   if (bypassScreen) {
@@ -163,6 +182,58 @@ export default function SettingsPanel({ onClose, onLogout }) {
             </button>
           </div>
 
+          {/* VPN mode */}
+          <div className="settings-section">
+            <span className="settings-section-title">Режим VPN</span>
+            <div className="mode-options" role="radiogroup" aria-label="Режим VPN">
+              <button
+                className={`mode-option${tunMode ? ' mode-option--active' : ''}`}
+                onClick={() => selectMode(true)}
+                role="radio"
+                aria-checked={tunMode}
+              >
+                <span className="mode-option-radio" />
+                <span className="mode-option-info">
+                  <span className="mode-option-title">
+                    VPN для всего трафика <span className="mode-option-badge">рекомендуется</span>
+                  </span>
+                  <span className="mode-option-sub">
+                    Все программы, игры, голосовой ChatGPT и звонки — через VPN
+                  </span>
+                </span>
+              </button>
+              <button
+                className={`mode-option${!tunMode ? ' mode-option--active' : ''}`}
+                onClick={() => selectMode(false)}
+                role="radio"
+                aria-checked={!tunMode}
+              >
+                <span className="mode-option-radio" />
+                <span className="mode-option-info">
+                  <span className="mode-option-title">Только браузеры (прокси)</span>
+                  <span className="mode-option-sub">
+                    Голосовой ChatGPT, игры и часть приложений пойдут напрямую, без VPN
+                  </span>
+                </span>
+              </button>
+            </div>
+            {modeChanged && (vpnStatus === 'connected' || vpnStatus === 'reconnecting') && (
+              <span className="mode-note">Новый режим включится при следующем подключении</span>
+            )}
+            {onCheckConnection && (
+              <button className="settings-bypass-row" onClick={onCheckConnection}>
+                <div className="settings-row-info">
+                  <span className="settings-row-label">Проверка соединения</span>
+                  <span className="settings-row-sub">Какую страну видят ChatGPT и сайты, нет ли утечек</span>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            )}
+          </div>
+
           {/* System toggles */}
           <div className="settings-section">
             <span className="settings-section-title">Система</span>
@@ -210,20 +281,6 @@ export default function SettingsPanel({ onClose, onLogout }) {
                 <span className="settings-row-sub">Автоматически включать VPN при старте</span>
               </div>
               <button className={`toggle${autoConnect ? ' toggle--on' : ''}`} onClick={toggleAutoConnect}>
-                <span className="toggle-thumb" />
-              </button>
-            </div>
-
-            <div className="settings-row">
-              <div className="settings-row-info">
-                <span className="settings-row-label">VPN для всего трафика</span>
-                <span className="settings-row-sub">
-                  {tunMode
-                    ? 'Рекомендуется: все программы, игры, голос и UDP через VPN'
-                    : 'Выключено: через VPN идут только браузеры — голос, WebRTC и часть программ без защиты'}
-                </span>
-              </div>
-              <button className={`toggle${tunMode ? ' toggle--on' : ''}`} onClick={toggleTunMode}>
                 <span className="toggle-thumb" />
               </button>
             </div>
@@ -321,6 +378,27 @@ export default function SettingsPanel({ onClose, onLogout }) {
                 Отключает VPN · очищает прокси Windows · сбрасывает DNS на автоматический · удаляет TUN маршруты · сбрасывает Winsock и TCP/IP стек (требует перезагрузки)
               </span>
             )}
+          </div>
+
+          {/* About */}
+          <div className="settings-section">
+            <span className="settings-section-title">О программе</span>
+            <div className="settings-row">
+              <div className="settings-row-info">
+                <span className="settings-row-label">Lipton VPN</span>
+                <span className="settings-row-sub">Версия {version || '—'}</span>
+              </div>
+            </div>
+            <button className="settings-bypass-row" onClick={() => setLicensesScreen(true)}>
+              <div className="settings-row-info">
+                <span className="settings-row-label">Лицензии третьих сторон</span>
+                <span className="settings-row-sub">sing-box, Wintun, Xray и другие компоненты</span>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
           </div>
 
           {/* Account */}

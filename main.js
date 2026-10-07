@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, shell, nativeImage } = require('electron')
+const { app, BrowserWindow, ipcMain, Tray, Menu, shell, nativeImage, session } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const zlib = require('zlib')
@@ -11,6 +11,7 @@ const subscriptionManager = require('./electron/subscription-manager')
 const legacyCore = require('./electron/vpn-manager')
 const singboxCore = require('./electron/singbox-manager')
 const apiClient = require('./electron/api-client')
+const connectionCheck = require('./electron/connection-check')
 const { setupAutoUpdater } = require('./electron/auto-updater')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
@@ -37,6 +38,11 @@ const vpnManager = {
   },
   getStatus() {
     return (activeCore || pickCore()).getStatus()
+  },
+  // Режим работающего ядра: 'tun' | 'proxy'. У старого ядра — по настройке.
+  getMode() {
+    if ((activeCore || pickCore()) === singboxCore && singboxCore.getMode()) return singboxCore.getMode()
+    return settingsManager.get('tunMode') !== false ? 'tun' : 'proxy'
   },
   isKillSwitchEngaged() {
     return (activeCore || pickCore()) === singboxCore && singboxCore.isKillSwitchEngaged()
@@ -333,6 +339,15 @@ function setupIPC() {
   ipcMain.handle('app:minimize', () => mainWindow?.minimize())
   ipcMain.handle('app:close', () => mainWindow?.hide())
   ipcMain.handle('app:open-external', (_, url) => shell.openExternal(url))
+  // Текст лицензии стороннего компонента, который лежит рядом с ним в resources.
+  ipcMain.handle('app:license-text', (_, name) => {
+    try {
+      if (name !== 'sing-box') return ''
+      return fs.readFileSync(path.join(path.dirname(singboxCore.findSingbox()), 'LICENSE'), 'utf-8')
+    } catch {
+      return ''
+    }
+  })
 
   // Статьи и гайды — открываем внутри приложения (отдельное окно Electron),
   // а не во внешнем браузере. Блог отдаёт X-Frame-Options, поэтому не iframe, а
@@ -623,6 +638,16 @@ function setupIPC() {
       console.error('[VPN:Connect] Исключение:', err.message)
       return { success: false, error: err.message }
     }
+  })
+
+  // Проверка соединения: что видят сайты через VPN. Запросы идут тем же путём,
+  // что и обычный трафик; результаты остаются на ПК (никуда не отправляются).
+  let checkRunning = null
+  ipcMain.handle('vpn:check-connection', () => {
+    if (!checkRunning) {
+      checkRunning = runConnectionCheck().finally(() => { checkRunning = null })
+    }
+    return checkRunning
   })
 
   ipcMain.handle('vpn:disconnect', async () => {
@@ -1024,6 +1049,50 @@ function checkTrialExpiry() {
 
     mainWindow?.webContents.send('sub:updated', newSubs)
     console.log('[Trial] Пробная подписка истекла')
+  }
+}
+
+// ─── Проверка соединения ──────────────────────────────────────────────────────
+
+// Транспорт для проверки: отдельная сессия в памяти, без кэша и старых соединений.
+// TUN — напрямую через систему (трафик сам уходит в туннель), прокси — через
+// локальный вход ядра, как у браузеров.
+async function makeCheckFetcher(mode) {
+  const ses = session.fromPartition('lipton-connection-check')
+  const httpPort = settingsManager.get('httpPort') || 10809
+  if (mode === 'proxy') {
+    await ses.setProxy({ mode: 'fixed_servers', proxyRules: `127.0.0.1:${httpPort}`, proxyBypassRules: '<-loopback>' })
+  } else {
+    await ses.setProxy({ mode: 'direct' })
+  }
+  await ses.closeAllConnections()
+  await ses.clearHostResolverCache()
+  await ses.clearCache()
+  return async (url, timeoutMs) => {
+    const res = await ses.fetch(url, {
+      cache: 'no-store',
+      credentials: 'omit',
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return (await res.text()).slice(0, 4096)
+  }
+}
+
+async function runConnectionCheck() {
+  const status = vpnManager.getStatus()
+  const mode = vpnManager.getMode()
+  try {
+    const fetchText = status === 'connected' ? await makeCheckFetcher(mode) : null
+    const lookup = host => require('dns').promises.lookup(host, { family: 4 }).then(r => r.address)
+    const result = await connectionCheck.runConnectionCheck({ status, mode, fetchText, lookup })
+    // В лог — только статусы пунктов, без IP и стран (логи можно отправить в поддержку).
+    console.log(`[Check] ${result.verdict.title} (${mode || '—'}): ` + result.items.map(i => `${i.id}=${i.status}`).join(', '))
+    return result
+  } catch (err) {
+    console.error('[Check] Ошибка проверки:', err.message)
+    return { mode, items: [], verdict: { level: 'fail', title: 'Проверка не удалась', hints: [err.message] } }
   }
 }
 
