@@ -149,3 +149,10 @@ test('зависший запрос не вешает проверку (тайм
   assert.equal(item(r, 'ipv6').status, 'ok') // не ответил = заблокирован
   assert.equal(r.verdict.level, 'fail')
 })
+
+test('IPv6: утечка по литералу ловится, даже когда AAAA пустые', async () => {
+  const n = fakeNet({ ...healthy, [IPV6_URLS[0]]: 'fl=1\nip=2a00:1370:8000::2\nloc=RU\n' })
+  const r = await runConnectionCheck({ status: 'connected', mode: 'tun', fetchText: n.fetchText, lookup: lookupOk('172.70.100.1') })
+  assert.equal(item(r, 'ipv6').status, 'fail')
+  assert.equal(item(r, 'ipv6').detail, 'IP 2a00:1370:8000::2')
+})

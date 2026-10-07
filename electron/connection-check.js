@@ -14,7 +14,9 @@ const TRACE_URLS = {
   cloudflare: 'https://www.cloudflare.com/cdn-cgi/trace',
 }
 // Сайты, доступные только по IPv6: ответ = ваш IPv6-адрес.
-const IPV6_URLS = ['https://ipv6.icanhazip.com', 'https://api6.ipify.org']
+// Первым — IPv6-литерал без DNS: в TUN AAAA-запросы всегда пустые (ipv4_only), и проверка по
+// имени показала бы «заблокирован» даже при IPv6-маршруте мимо Wintun. Литерал ловит такую утечку.
+const IPV6_URLS = ['https://[2606:4700:4700::1111]/cdn-cgi/trace', 'https://ipv6.icanhazip.com', 'https://api6.ipify.org']
 // Authoritative-сервер Akamai отвечает IP резолвера, который его спросил.
 const DNS_WHOAMI_HOST = 'whoami.akamai.net'
 const TIMEOUT_MS = 8000
@@ -105,7 +107,8 @@ async function probeIpv6(fetchText, timeoutMs) {
   for (const url of IPV6_URLS) {
     try {
       const body = String(await fetchText(url, timeoutMs)).trim()
-      return { reachable: true, ip: body.split(/\s+/)[0] || '' }
+      const ip = body.includes('ip=') ? parseTrace(body).ip : body.split(/\s+/)[0] || ''
+      return { reachable: true, ip }
     } catch (e) {
       lastErr = e
     }

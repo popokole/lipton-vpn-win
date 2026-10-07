@@ -13,12 +13,15 @@ function notifyWininet() {
   } catch { /* non-critical */ }
 }
 
-function setProxy(host, port) {
+// bypassRu=false: .ru/.рф тоже идут через ядро (иначе WinINet отправит их напрямую
+// мимо «Обхода РФ» в настройках). По умолчанию true — как вело себя старое ядро.
+function setProxy(host, port, { bypassRu = true } = {}) {
+  const override = 'localhost;127.*;10.*;172.16.*;192.168.*' + (bypassRu ? ';*.ru;*.рф' : '')
   try {
     execSync(`reg add "${REG}" /v ProxyEnable /t REG_DWORD /d 1 /f`, { stdio: 'ignore', windowsHide: true })
     execSync(`reg add "${REG}" /v ProxyServer /t REG_SZ /d "${host}:${port}" /f`, { stdio: 'ignore', windowsHide: true })
     execSync(
-      `reg add "${REG}" /v ProxyOverride /t REG_SZ /d "localhost;127.*;10.*;172.16.*;192.168.*;*.ru;*.рф" /f`,
+      `reg add "${REG}" /v ProxyOverride /t REG_SZ /d "${override}" /f`,
       { stdio: 'ignore', windowsHide: true }
     )
     notifyWininet()

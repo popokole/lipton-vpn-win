@@ -512,7 +512,7 @@ async function doConnect(server, opts = {}) {
   if (!st.desired || st.gen !== gen0) return bail()
 
   if (r.ok) {
-    if (mode === 'proxy') systemProxy.setProxy('127.0.0.1', st.httpPort)
+    if (mode === 'proxy') systemProxy.setProxy('127.0.0.1', st.httpPort, { bypassRu: opts.bypassRu !== false })
     else if (ourProxyActive()) systemProxy.clearProxy()
     st.killSwitchEngaged = false
     // TUN: правило остаётся выключенным — на случай падения ядра.

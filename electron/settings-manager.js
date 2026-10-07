@@ -55,7 +55,12 @@ function migrate() {
   let raw = {}
   try {
     if (fs.existsSync(SETTINGS_FILE)) raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'))
-  } catch {}
+  } catch (e) {
+    // Файл не прочитался (занят антивирусом, битый) — не перезаписываем: в нём токены входа
+    // и подписки. Миграция повторится при следующем запуске.
+    console.error('[settings] миграция пропущена, settings.json не прочитан:', e.message)
+    return []
+  }
   const from = Number(raw.settingsVersion) || 1
   if (from >= SETTINGS_VERSION) return []
   const applied = []
