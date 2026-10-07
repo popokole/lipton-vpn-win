@@ -174,7 +174,7 @@ export default function App() {
 
   const handleConnect = useCallback(async () => {
     if (vpnStatus === 'connecting' || vpnStatus === 'disconnecting') return
-    if (vpnStatus === 'connected') {
+    if (vpnStatus === 'connected' || vpnStatus === 'reconnecting') {
       setVpnStatus('disconnecting')
       await window.api.vpnDisconnect()
       return
@@ -197,7 +197,14 @@ export default function App() {
       const result = await window.api.vpnConnect(serverId)
       if (!result.success) {
         setVpnStatus('error')
-        setTimeout(() => setVpnStatus('disconnected'), 2500)
+        setConnectError(result.error || null)
+        // Новое ядро при неудачной смене сервера остаётся на прежнем — берём фактический статус.
+        setTimeout(async () => {
+          setConnectError(null)
+          const st = await window.api.vpnStatus().catch(() => null)
+          setVpnStatus(st?.status || 'disconnected')
+          if (st?.serverId) setActiveServerId(st.serverId)
+        }, 2500)
       }
     }
   }, [vpnStatus])
@@ -221,6 +228,7 @@ export default function App() {
   const statusLabel = {
     connected:     activeServer?.remark?.replace(/[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF]\s*/g, '') || 'Подключено',
     connecting:    'Подключение...',
+    reconnecting:  'Переподключение...',
     disconnecting: 'Отключение...',
     disconnected:  'Отключено',
     error:         'Ошибка подключения',

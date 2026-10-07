@@ -2,10 +2,11 @@ import EarthSymbols from './EarthSymbols'
 
 export default function ConnectButton({ status, onConnect }) {
   const isPending = status === 'connecting' || status === 'disconnecting'
+  const isBusy = isPending || status === 'reconnecting'
   // Земля ярче, когда подключены; приглушена в покое.
   const globeOpacity =
     status === 'connected' ? 0.95 :
-    isPending ? 0.7 :
+    isBusy ? 0.7 :
     0.5
 
   return (
@@ -16,7 +17,7 @@ export default function ConnectButton({ status, onConnect }) {
         className={`power-btn power-btn--${status}`}
         onClick={onConnect}
         disabled={isPending}
-        title={status === 'connected' ? 'Отключиться' : 'Подключиться'}
+        title={status === 'connected' || status === 'reconnecting' ? 'Отключиться' : 'Подключиться'}
       >
         <div className="power-globe">
           <EarthSymbols grid={7} fps={30} opacity={globeOpacity} />

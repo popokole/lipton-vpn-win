@@ -8,11 +8,48 @@ const logger = require('./electron/logger')
 
 const settingsManager = require('./electron/settings-manager')
 const subscriptionManager = require('./electron/subscription-manager')
-const vpnManager = require('./electron/vpn-manager')
+const legacyCore = require('./electron/vpn-manager')
+const singboxCore = require('./electron/singbox-manager')
 const apiClient = require('./electron/api-client')
 const { setupAutoUpdater } = require('./electron/auto-updater')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
+
+// ─── Ядро VPN ─────────────────────────────────────────────────────────────────
+// Основное — sing-box (singbox-manager). Старое xray+tun2socks (vpn-manager) —
+// скрытый запасной вариант по настройке coreLegacy, на один релиз.
+
+let activeCore = null
+
+function pickCore() {
+  return settingsManager.get('coreLegacy') === true ? legacyCore : singboxCore
+}
+
+const vpnManager = {
+  async connect(server, opts) {
+    const next = pickCore()
+    if (activeCore && activeCore !== next) await activeCore.disconnect()
+    activeCore = next
+    return next.connect(server, opts)
+  },
+  async disconnect() {
+    await (activeCore || pickCore()).disconnect()
+  },
+  getStatus() {
+    return (activeCore || pickCore()).getStatus()
+  },
+  isKillSwitchEngaged() {
+    return (activeCore || pickCore()) === singboxCore && singboxCore.isKillSwitchEngaged()
+  },
+  setKillSwitch(enabled) {
+    legacyCore.setKillSwitch(enabled)
+    singboxCore.setKillSwitch(enabled)
+  },
+  clearProxy() {
+    singboxCore.clearProxy()
+    if (activeCore === legacyCore) legacyCore.clearProxy()
+  },
+}
 
 // В dev — отдельный userData, чтобы single-instance lock не конфликтовал с
 // установленной версией (dev и прод можно держать запущенными параллельно).
@@ -416,7 +453,7 @@ function setupIPC() {
     console.log(`[Settings] Автоподключение: ${enabled ? 'вкл' : 'выкл'}`)
   })
 
-  ipcMain.handle('settings:get-tun-mode', () => settingsManager.get('tunMode') === true)
+  ipcMain.handle('settings:get-tun-mode', () => settingsManager.get('tunMode') !== false)
   ipcMain.handle('settings:set-tun-mode', (_, enabled) => {
     settingsManager.set('tunMode', enabled)
     console.log(`[Settings] TUN mode: ${enabled ? 'вкл' : 'выкл'}`)
@@ -444,7 +481,7 @@ function setupIPC() {
       let adapters = []
       try {
         const out = execSync(
-          `powershell -NoProfile -NonInteractive -Command "Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.Name -ne 'LiptonVPN'} | Select-Object -ExpandProperty Name"`,
+          `powershell -NoProfile -NonInteractive -Command "Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.Name -ne 'LiptonVPN' -and $_.Name -ne 'LiptonTUN'} | Select-Object -ExpandProperty Name"`,
           { encoding: 'utf8', timeout: 8000, windowsHide: true }
         )
         adapters = out.split('\n').map(s => s.trim()).filter(Boolean)
@@ -488,7 +525,7 @@ function setupIPC() {
       let adapters = []
       try {
         const out = execSync(
-          `powershell -NoProfile -NonInteractive -Command "Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.Name -ne 'LiptonVPN'} | Select-Object -ExpandProperty Name"`,
+          `powershell -NoProfile -NonInteractive -Command "Get-NetAdapter | Where-Object {$_.Status -eq 'Up' -and $_.Name -ne 'LiptonVPN' -and $_.Name -ne 'LiptonTUN'} | Select-Object -ExpandProperty Name"`,
           { encoding: 'utf8', timeout: 8000, windowsHide: true }
         )
         adapters = out.split('\n').map(s => s.trim()).filter(Boolean)
@@ -557,7 +594,7 @@ function setupIPC() {
 
   // VPN
   ipcMain.handle('vpn:status', () => ({
-    status: vpnManager.getStatus(),
+    status: vpnManager.isKillSwitchEngaged() ? 'kill-switch' : vpnManager.getStatus(),
     serverId: settingsManager.get('activeServerId'),
   }))
 
@@ -571,24 +608,7 @@ function setupIPC() {
       }
       if (!server) return { success: false, error: 'Сервер не найден' }
 
-      const result = await vpnManager.connect(server, {
-        socksPort: settings.socksPort || 10808,
-        httpPort: settings.httpPort || 10809,
-        dataDir: settingsManager.getDataDir(),
-        bypassRu: settings.bypassRu !== false,
-        bypassDomains: settings.bypassDomains || [],
-        tunMode: settings.tunMode === true,
-
-        onUnexpectedDisconnect: () => {
-          settingsManager.set('activeServerId', null)
-          refreshTray('disconnected')
-          mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected', serverId: null })
-        },
-        onKillSwitch: () => {
-          refreshTray('disconnected')
-          mainWindow?.webContents.send('vpn:status-update', { status: 'kill-switch', serverId: null })
-        },
-      })
+      const result = await vpnManager.connect(server, buildConnectOptions(settings))
 
       if (result.success) {
         settingsManager.set('activeServerId', serverId)
@@ -596,6 +616,7 @@ function setupIPC() {
         mainWindow?.webContents.send('vpn:status-update', { status: 'connected', serverId })
       } else {
         console.error('[VPN:Connect] Подключение не удалось:', result.error || '(нет деталей)')
+        if (!result.keptPrevious && vpnManager.getStatus() === 'disconnected') refreshTray('disconnected')
       }
       return result
     } catch (err) {
@@ -1006,6 +1027,40 @@ function checkTrialExpiry() {
   }
 }
 
+// ─── Параметры подключения (одни и те же для ручного и автоподключения) ───────
+
+function buildConnectOptions(settings) {
+  const subs = settings.subscriptions || []
+  return {
+    socksPort: settings.socksPort || 10808,
+    httpPort: settings.httpPort || 10809,
+    dataDir: settingsManager.getDataDir(),
+    bypassRu: settings.bypassRu !== false,
+    bypassDomains: settings.bypassDomains || [],
+    tunMode: settings.tunMode !== false,
+    strictRoute: settings.tunStrictRoute !== false,
+    // Все серверы подписок — для смены сервера без перезапуска ядра.
+    servers: subs.flatMap(s => s.servers || []),
+
+    onUnexpectedDisconnect: () => {
+      settingsManager.set('activeServerId', null)
+      refreshTray('disconnected')
+      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected', serverId: null })
+    },
+    onKillSwitch: () => {
+      refreshTray('disconnected')
+      mainWindow?.webContents.send('vpn:status-update', { status: 'kill-switch', serverId: null })
+    },
+    onReconnecting: () => {
+      mainWindow?.webContents.send('vpn:status-update', { status: 'reconnecting', serverId: settingsManager.get('activeServerId') })
+    },
+    onReconnected: () => {
+      refreshTray('connected')
+      mainWindow?.webContents.send('vpn:status-update', { status: 'connected', serverId: settingsManager.get('activeServerId') })
+    },
+  }
+}
+
 // ─── Auto-connect ─────────────────────────────────────────────────────────────
 
 async function doAutoConnect() {
@@ -1025,23 +1080,7 @@ async function doAutoConnect() {
   console.log('[AutoConnect] Подключение к:', server.remark || server.address)
   mainWindow?.webContents.send('vpn:status-update', { status: 'connecting' })
 
-  const result = await vpnManager.connect(server, {
-    socksPort: settings.socksPort || 10808,
-    httpPort: settings.httpPort || 10809,
-    dataDir: settingsManager.getDataDir(),
-    bypassRu: settings.bypassRu !== false,
-    bypassDomains: settings.bypassDomains || [],
-    adBlock: settings.adBlock === true,
-    onUnexpectedDisconnect: () => {
-      settingsManager.set('activeServerId', null)
-      refreshTray('disconnected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected', serverId: null })
-    },
-    onKillSwitch: () => {
-      refreshTray('disconnected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'kill-switch', serverId: null })
-    },
-  })
+  const result = await vpnManager.connect(server, buildConnectOptions(settings))
 
   if (result.success) {
     settingsManager.set('activeServerId', serverId)
@@ -1102,6 +1141,13 @@ app.setAsDefaultProtocolClient('lipton')
 app.setAsDefaultProtocolClient('liptonvpn')
 
 app.whenReady().then(async () => {
+  try {
+    const applied = settingsManager.migrate()
+    if (applied.length) console.log('[Settings] Миграция настроек:', applied.join(', '))
+  } catch (e) {
+    console.error('[Settings] Ошибка миграции:', e.message)
+  }
+
   createWindow()
   createTray()
   setupIPC()
@@ -1111,6 +1157,17 @@ app.whenReady().then(async () => {
 
   // Init kill switch from saved settings
   vpnManager.setKillSwitch(settingsManager.get('killSwitch') === true)
+
+  // Следы прошлого запуска: осиротевшее ядро, блокировка, маршруты старого TUN, наш прокси.
+  try {
+    await singboxCore.cleanupStale({
+      dataDir: settingsManager.getDataDir(),
+      killSwitch: settingsManager.get('killSwitch') === true,
+      httpPort: settingsManager.get('httpPort') || 10809,
+    })
+  } catch (e) {
+    console.warn('[Startup] Очистка:', e.message)
+  }
 
   // Подписка теперь приходит из аккаунта — тянем при старте, если вошли.
   if (apiClient.isAuthed()) {
@@ -1146,6 +1203,21 @@ app.on('second-instance', (event, argv) => {
 
 app.on('window-all-closed', () => { /* keep alive in tray */ })
 
-app.on('before-quit', async () => {
-  await vpnManager.disconnect()
+let quitting = false
+app.on('before-quit', (event) => {
+  if (quitting) return
+  // Дожидаемся отключения (ядро, прокси, блокировка), потом выходим обычным quit —
+  // чтобы сработали 'quit'-обработчики (в т.ч. установка обновления при выходе).
+  event.preventDefault()
+  quitting = true
+  const done = () => app.quit()
+  const timer = setTimeout(done, 8000)
+  vpnManager.disconnect()
+    .catch(e => console.error('[Quit] Ошибка отключения:', e.message))
+    .finally(() => { clearTimeout(timer); done() })
+})
+
+// Аварийный выход процесса: не оставляем ядро, прокси и блокировку.
+process.on('exit', () => {
+  try { singboxCore.emergencyCleanupSync() } catch {}
 })

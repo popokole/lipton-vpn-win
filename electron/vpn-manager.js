@@ -1,4 +1,6 @@
-const { spawn, execSync } = require('child_process')
+// Старое ядро (xray + tun2socks). Оставлено скрытым запасным вариантом
+// (настройка coreLegacy) на один релиз; основное ядро — singbox-manager.js.
+const { spawn } = require('child_process')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
@@ -39,43 +41,7 @@ function findGeoDir() {
 
 // ─── System proxy ─────────────────────────────────────────────────────────────
 
-const REG = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
-
-function setProxy(host, port) {
-  try {
-    execSync(`reg add "${REG}" /v ProxyEnable /t REG_DWORD /d 1 /f`, { stdio: 'ignore' })
-    execSync(`reg add "${REG}" /v ProxyServer /t REG_SZ /d "${host}:${port}" /f`, { stdio: 'ignore' })
-    execSync(
-      `reg add "${REG}" /v ProxyOverride /t REG_SZ /d "localhost;127.*;10.*;172.16.*;192.168.*;*.ru;*.рф" /f`,
-      { stdio: 'ignore' }
-    )
-    notifyWininet()
-    console.log(`[VPN] Прокси установлен: ${host}:${port}`)
-  } catch (e) {
-    console.error('[VPN] Ошибка установки прокси:', e.message)
-  }
-}
-
-function clearProxy() {
-  try {
-    execSync(`reg add "${REG}" /v ProxyEnable /t REG_DWORD /d 0 /f`, { stdio: 'ignore' })
-    execSync(`reg delete "${REG}" /v ProxyServer /f`, { stdio: 'ignore' })
-    notifyWininet()
-    console.log('[VPN] Прокси очищен')
-  } catch {
-    // ignore if key didn't exist
-  }
-}
-
-function notifyWininet() {
-  try {
-    const { spawn } = require('child_process')
-    spawn('powershell', [
-      '-WindowStyle', 'Hidden', '-Command',
-      `$t=Add-Type -PassThru -TypeDefinition 'using System;using System.Runtime.InteropServices;public class W{[DllImport(\\"wininet.dll\\")]public static extern bool InternetSetOption(IntPtr a,int b,IntPtr c,int d);}';$t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0);$t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0)`,
-    ], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
-  } catch { /* non-critical */ }
-}
+const { setProxy, clearProxy } = require('./system-proxy')
 
 // ─── Kill Switch ──────────────────────────────────────────────────────────────
 

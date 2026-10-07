@@ -216,8 +216,12 @@ export default function SettingsPanel({ onClose, onLogout }) {
 
             <div className="settings-row">
               <div className="settings-row-info">
-                <span className="settings-row-label">TUN режим</span>
-                <span className="settings-row-sub">Весь трафик через VPN — фиксит игры и UDP</span>
+                <span className="settings-row-label">VPN для всего трафика</span>
+                <span className="settings-row-sub">
+                  {tunMode
+                    ? 'Рекомендуется: все программы, игры, голос и UDP через VPN'
+                    : 'Выключено: через VPN идут только браузеры — голос, WebRTC и часть программ без защиты'}
+                </span>
               </div>
               <button className={`toggle${tunMode ? ' toggle--on' : ''}`} onClick={toggleTunMode}>
                 <span className="toggle-thumb" />

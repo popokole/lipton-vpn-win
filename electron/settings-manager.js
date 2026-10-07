@@ -14,7 +14,14 @@ const DEFAULTS = {
   activeServerId: null,
   socksPort: 10808,
   httpPort: 10809,
+  // Режим «весь трафик» (TUN через sing-box) — по умолчанию. false = только браузеры (системный прокси).
+  tunMode: true,
+  // Скрытый запасной вариант: старое ядро xray (+tun2socks). Уберём через релиз.
+  coreLegacy: false,
 }
+
+// Версия схемы настроек. 2 — новое ядро sing-box и TUN по умолчанию.
+const SETTINGS_VERSION = 2
 
 function ensure() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -42,8 +49,30 @@ function set(key, value) {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(current, null, 2), 'utf-8')
 }
 
+// Одноразовые миграции при обновлении. Возвращает список применённых.
+function migrate() {
+  ensure()
+  let raw = {}
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'))
+  } catch {}
+  const from = Number(raw.settingsVersion) || 1
+  if (from >= SETTINGS_VERSION) return []
+  const applied = []
+  if (from < 2) {
+    // До 2.1 по умолчанию был системный прокси — UDP/WebRTC и часть программ шли мимо VPN.
+    // Один раз переводим всех на «весь трафик»; дальнейший выбор пользователя уважаем.
+    raw.tunMode = true
+    if (raw.coreLegacy === undefined) raw.coreLegacy = false
+    applied.push('tunMode→true')
+  }
+  raw.settingsVersion = SETTINGS_VERSION
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ ...DEFAULTS, ...raw }, null, 2), 'utf-8')
+  return applied
+}
+
 function getDataDir() {
   return DATA_DIR
 }
 
-module.exports = { getAll, get, set, getDataDir }
+module.exports = { getAll, get, set, getDataDir, migrate, SETTINGS_VERSION }

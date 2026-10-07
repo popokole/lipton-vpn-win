@@ -8,7 +8,8 @@
     "build": "vite build",
     "dist": "npm run build && electron-builder",
     "start": "node scripts/start-electron.js",
-    "prod": "node scripts/run-prod.js"
+    "prod": "node scripts/run-prod.js",
+    "test": "node --test"
   },
   "dependencies": {
     "electron-updater": "^6.3.9"

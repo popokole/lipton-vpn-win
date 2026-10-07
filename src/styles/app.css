@@ -310,6 +310,7 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
   animation: ringBreath 3.5s ease-in-out infinite;
 }
 .power-ring--connecting,
+.power-ring--reconnecting,
 .power-ring--disconnecting {
   border: 2.5px solid transparent;
   background:
@@ -385,6 +386,7 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
   box-shadow: 0 0 48px 12px rgba(52,208,88,0.26);
 }
 .power-btn--connecting,
+.power-btn--reconnecting,
 .power-btn--disconnecting {
   border-color: rgba(52,208,88,0.4);
   color: var(--green);
@@ -425,6 +427,7 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
 }
 .status-text-big--connected    { color: var(--green); text-shadow: 0 0 20px rgba(52,208,88,0.4); }
 .status-text-big--connecting,
+.status-text-big--reconnecting,
 .status-text-big--disconnecting { color: var(--green); animation: pulseGlow 1.2s ease-in-out infinite; }
 .status-text-big--error        { color: var(--red); }
 
@@ -2183,6 +2186,7 @@ a { cursor: pointer; text-decoration: none; color: inherit; }
 /* при подключении прячем иконку — светится сама Земля */
 .power-btn--connected .power-icon { opacity: 0; transform: scale(0.4); }
 .power-btn--connecting .power-icon,
+.power-btn--reconnecting .power-icon,
 .power-btn--disconnecting .power-icon { opacity: 0.55; }
 .power-btn--connected .power-globe { animation: globeBreath 4s ease-in-out infinite; }
 @keyframes globeBreath { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }

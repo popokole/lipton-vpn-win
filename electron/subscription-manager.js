@@ -127,6 +127,7 @@ function parseVless(uri) {
       fp: p.fp || 'chrome',
       path: p.path || '/',
       host: p.host || '',
+      headerType: p.headerType || '',
       alpn: p.alpn || '',
       serviceName: p.serviceName || '',
       ping: null,
@@ -149,6 +150,7 @@ function parseVmess(uri) {
       sni: json.sni || json.add,
       path: json.path || '/',
       host: json.host || '',
+      headerType: json.type || '',
       alterId: parseInt(json.aid) || 0,
       cipher: json.scy || 'auto',
       flow: '',
@@ -173,6 +175,7 @@ function parseTrojan(uri) {
       sni: p.sni || u.hostname,
       path: p.path || '/',
       host: p.host || '',
+      headerType: p.headerType || '',
       flow: '',
       ping: null,
     }
@@ -269,4 +272,4 @@ async function pingAll(sub, subscriptions) {
   return { success: true, subscriptions: updated }
 }
 
-module.exports = { validateUrl, fetchAndParse, add, refresh, pingAll }
+module.exports = { validateUrl, fetchAndParse, add, refresh, pingAll, parseUri }
