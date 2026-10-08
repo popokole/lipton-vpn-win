@@ -262,9 +262,16 @@ function PlanTile({ plan, cheapest, onRenew, onChangeTariff, onLogin, index }) {
     case 'guest':
       title = 'Пробный доступ'
       meta = <span className="num">{fmtMinSec(plan.msLeft)} из {fmtMinSec(plan.totalMs || 15 * 60000)}</span>
-      sub = 'без аккаунта'
+      sub = 'тариф и статистика — после входа'
       progress = plan.progress
-      action = <Button size="sm" variant="primary" block onClick={onLogin}>Войти</Button>
+      action = <Button size="sm" variant="primary" block onClick={onLogin}>Создать аккаунт</Button>
+      break
+    case 'daily':
+      title = '15 минут'
+      meta = <span className="num">{fmtMinSec(plan.msLeft)} из {fmtMinSec(plan.totalMs || 15 * 60000)}</span>
+      sub = cheapest ? `дальше — от ${rub(cheapest)} в месяц` : 'раз в день'
+      progress = plan.progress
+      action = <Button size="sm" variant="primary" block onClick={onRenew}>Оформить подписку</Button>
       break
     default:
       title = 'Нет подписки'

@@ -9,6 +9,8 @@ import './styles/ui.css'
 import './styles/shell.css'
 import './styles/home.css'
 import './styles/pages.css'
+import './styles/onboarding.css'
+import './styles/screens.css'
 import './styles/app.css'
 import 'flag-icons/css/flag-icons.min.css'
 

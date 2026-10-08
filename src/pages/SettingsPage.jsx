@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Glass, Segmented, Button, Icon, Switch, Progress, ConfirmDialog } from '../components/ui'
-import { daysWord, rub } from '../lib/plan.mjs'
+import { daysWord, rub, fmtMinSec } from '../lib/plan.mjs'
 import {
   lastSeenLabel, deviceInfo, sinceLabel, initialOf, domainsWord, domainName, cancelWarning,
 } from '../lib/settings.mjs'
 
 // Настройки (макеты new-pc-settings-full / -play): на ПК в них же профиль.
-// Слева — аккаунт, подписка, устройства, приложение, оплата; справа — VPN,
-// помощь, о приложении, «Отменить подписку» и «Выйти». Подэкраны (домены,
-// проверка соединения, оплата, поддержка, история, лицензии) — через onOpen.
+// Слева — аккаунт, подписка, устройства, приложение, уведомления, оплата;
+// справа — VPN, помощь, о приложении, «Отменить подписку» и «Выйти».
+// Подэкраны (new-scr-*: домены, почта, история платежей, способ оплаты,
+// промокод, чат, база знаний, логи, политика; проверка соединения, оплата,
+// лицензии) — через onOpen.
 
 const SITE = 'https://liptonone.online'
 const BOT = 'https://t.me/liptonvpn_bot'
@@ -79,8 +81,37 @@ function ToggleRow({ icon, title, sub, value, onChange, disabled }) {
 }
 
 // ─── Аккаунт ────────────────────────────────────────────────────────────────
-function AccountCard({ profile, identities, onUnlinkTelegram, onLogin, authed }) {
+function GuestCard({ guest, onAuth }) {
+  const active = guest?.mode === 'active'
+  return (
+    <Glass edge className="set-card set-guest ui-rise" style={{ '--i': 1 }}>
+      <div className="set-guest-head">
+        <span className="set-guest-ava" aria-hidden="true">
+          <Icon name="user" size={20} stroke={1.8} />
+          <i><Icon name="clock" size={10} stroke={2.6} /></i>
+        </span>
+        <span className="set-row-text">
+          <span className="set-guest-over">Гостевой режим</span>
+          <span className="set-account-name">Вы без аккаунта</span>
+          <span className={`set-guest-pill${active ? '' : ' is-ended'}`}>
+            <Icon name="clock" size={11} stroke={2.4} />
+            {active ? <>Пробный доступ · <b className="num">{fmtMinSec(guest.msLeft)}</b></> : 'Пробный доступ закончился'}
+          </span>
+        </span>
+      </div>
+      <p className="set-guest-text">Создайте аккаунт — сохраним подписку, устройства и настройки. Займёт минуту.</p>
+      <div className="set-guest-actions">
+        <Button variant="primary" block icon={<Icon name="send" size={15} stroke={2} />} onClick={() => onAuth('start')}>Создать аккаунт через Telegram</Button>
+        <Button block icon={<Icon name="mail" size={15} stroke={2} />} onClick={() => onAuth('login', { tab: 'email', create: true })}>Создать по почте</Button>
+        <div className="set-guest-foot">Уже есть аккаунт? <button type="button" className="onb-link onb-link--accent" onClick={() => onAuth('login')}>Войти</button></div>
+      </div>
+    </Glass>
+  )
+}
+
+function AccountCard({ profile, identities, onUnlinkTelegram, onLogin, authed, guest, onAuth, onOpen }) {
   if (!authed) {
+    if (guest && guest.mode !== 'none') return <GuestCard guest={guest} onAuth={onAuth} />
     return (
       <Glass className="set-card ui-rise" style={{ '--i': 1 }}>
         <Row
@@ -89,7 +120,7 @@ function AccountCard({ profile, identities, onUnlinkTelegram, onLogin, authed })
           sub="Настройки хранятся только на этом устройстве"
           right={<Button size="sm" variant="primary" onClick={onLogin}>Войти</Button>}
         />
-        <Row icon="send" title="Создать аккаунт через Telegram" sub="@liptonvpn_bot · пара нажатий" chevron onClick={() => window.api?.openExternal?.(BOT)} />
+        <Row icon="send" title="Создать аккаунт через Telegram" sub="@liptonvpn_bot · пара нажатий" chevron onClick={() => onAuth('start')} />
       </Glass>
     )
   }
@@ -118,10 +149,7 @@ function AccountCard({ profile, identities, onUnlinkTelegram, onLogin, authed })
         icon="mail"
         title="Почта"
         sub={email || 'не привязана'}
-        right={
-          // TODO(redesign): смена почты внутри приложения — экран new-scr-email (D4, часть 2)
-          <Button size="sm" onClick={() => window.api?.openExternal?.(`${SITE}/app/settings`)}>{email ? 'Изменить' : 'Привязать'}</Button>
-        }
+        right={<Button size="sm" onClick={() => onOpen('email')}>{email ? 'Изменить' : 'Привязать'}</Button>}
       />
       <Row
         icon="send"
@@ -240,8 +268,14 @@ function DevicesCard({ devices, error, loading, myHwid, onRevoke, onRelink, onRe
   )
 }
 
+// Уведомления аккаунта: /me/notifications → три переключателя.
+function normalizeNotif(p) {
+  return { payment_reminders: !!p?.payment_reminders, news: !!p?.news, telegram_messages: !!p?.telegram_messages }
+}
+
 export default function SettingsPage({
   authed, plan, view, theme, onTheme, onOpen, onLogin, onLogout, onToast, vpnStatus, version, sheet,
+  guest = null, onAuth = () => {},
 }) {
   const on = vpnStatus === 'connected' || vpnStatus === 'reconnecting'
   const hasAccess = authed && (plan?.kind === 'active' || plan?.kind === 'trial')
@@ -260,6 +294,7 @@ export default function SettingsPage({
   const [txCount, setTxCount] = useState(null)
   const [dev, setDev] = useState({ loading: false, devices: null, limit: null, hwid: null, error: '' })
   const [syncing, setSyncing] = useState(false)
+  const [notif, setNotif] = useState(null) // null — нет ручки или ещё грузим
 
   // ── Диалоги ──
   const [dialog, setDialog] = useState(null) // { kind, ... }
@@ -306,7 +341,27 @@ export default function SettingsPage({
     api.accountProfile?.().then(r => { if (alive.current && r?.success) setProfile(r.profile || null) }).catch(() => {})
     api.accountIdentities?.().then(r => { if (alive.current && r?.success) setIdentities(r.identities || []) }).catch(() => {})
     api.accountTransactions?.().then(r => { if (alive.current && r?.success) setTxCount((r.transactions || []).length) }).catch(() => {})
+    // Нет ручки (старый сервер) — блок переключателей не показываем
+    api.accountNotifications?.().then(r => {
+      if (alive.current && r?.success && r.prefs && typeof r.prefs === 'object') setNotif(normalizeNotif(r.prefs))
+    }).catch(() => {})
   }, [authed])
+
+  // Профиль заново — после смены почты (sheet закрылся)
+  useEffect(() => {
+    if (!authed || sheet) return
+    window.api?.accountProfile?.().then(r => { if (alive.current && r?.success) setProfile(r.profile || null) }).catch(() => {})
+  }, [authed, sheet])
+
+  const setServerNotif = (key) => async (value) => {
+    const prev = notif
+    const next = { ...notif, [key]: value }
+    setNotif(next)
+    const r = await window.api?.accountSetNotifications?.(next).catch(() => null)
+    if (!alive.current) return
+    if (!r?.success) { setNotif(prev); toast(r?.error || 'Не удалось сохранить', 'error'); return }
+    if (r.prefs) setNotif(normalizeNotif(r.prefs))
+  }
 
   useEffect(() => { if (hasAccess) loadDevices() }, [hasAccess, loadDevices])
 
@@ -486,6 +541,9 @@ export default function SettingsPage({
               profile={profile}
               identities={identities}
               onLogin={onLogin}
+              guest={guest}
+              onAuth={onAuth}
+              onOpen={onOpen}
               onUnlinkTelegram={tg => openDialog({ kind: 'unlinkTg', id: tg.id })}
             />
           </Section>
@@ -526,17 +584,41 @@ export default function SettingsPage({
                 </div>
                 <Segmented label="Тема" value={theme} onChange={onTheme} options={THEME_OPTIONS} />
               </div>
-              <ToggleRow
-                icon="bell"
-                title="Уведомления"
-                sub="Об окончании подписки"
-                value={prefs.notifications}
-                onChange={setPref('notifications', v => window.api?.setNotifications?.(v))}
-              />
+              {!authed && (
+                <ToggleRow
+                  icon="bell"
+                  title="Уведомления"
+                  sub="Об окончании подписки"
+                  value={prefs.notifications}
+                  onChange={setPref('notifications', v => window.api?.setNotifications?.(v))}
+                />
+              )}
               {/* TODO(redesign): другие языки интерфейса — пока только русский */}
               <Row icon="translate" title="Язык" right={<span className="set-value">Русский</span>} />
             </Glass>
           </Section>
+
+          {authed && (
+            <Section title="Уведомления">
+              <Glass className="set-card ui-rise" style={{ '--i': 5 }}>
+                {notif && (
+                  <>
+                    <ToggleRow icon="card" title="Напоминания об оплате" sub="Перед окончанием подписки" value={notif.payment_reminders} onChange={setServerNotif('payment_reminders')} />
+                    <ToggleRow icon="bell" title="Новости" sub="Обновления, тарифы и советы" value={notif.news} onChange={setServerNotif('news')} />
+                    <ToggleRow icon="send" title="Сообщения в Telegram" sub="От бота @liptonvpn_bot" value={notif.telegram_messages} onChange={setServerNotif('telegram_messages')} />
+                  </>
+                )}
+                <ToggleRow
+                  icon="desktop"
+                  title="На рабочем столе"
+                  sub="Окончание подписки — уведомлением Windows"
+                  value={prefs.notifications}
+                  onChange={setPref('notifications', v => window.api?.setNotifications?.(v))}
+                />
+                {notif && <div className="set-row set-row--note"><Icon name="info" size={13} stroke={2} /><span>О списаниях и оплатах сообщаем всегда — их не выключить</span></div>}
+              </Glass>
+            </Section>
+          )}
 
           {authed && (
             <Section title="Оплата">
@@ -549,14 +631,14 @@ export default function SettingsPage({
                   chevron
                   onClick={() => onOpen('history')}
                 />
-                {/* TODO(redesign): отдельный экран «Способ оплаты» с отвязкой и кулдауном 24 ч — D4, часть 2 */}
                 <Row
                   icon="card"
                   title="Способ оплаты"
                   right={<span className="set-value num">{profile?.has_card ? `•••• ${profile.card_last4 || '••••'}` : 'не привязан'}</span>}
                   chevron
-                  onClick={() => onOpen('account')}
+                  onClick={() => onOpen('payment')}
                 />
+                <Row icon="tag" title="Промокод" sub="Скидка или бонусные дни" chevron onClick={() => onOpen('promo')} />
               </Glass>
             </Section>
           )}
@@ -629,14 +711,14 @@ export default function SettingsPage({
               ) : (
                 <Row icon="send" title="Поддержка в Telegram" sub="@liptonvpn_bot" chevron onClick={() => window.api?.openExternal?.(BOT)} />
               )}
-              <Row icon="book" title="База знаний" sub="Инструкции и частые вопросы" chevron onClick={() => window.api?.openArticles?.()} />
+              <Row icon="book" title="База знаний" sub="Инструкции и частые вопросы" chevron onClick={() => onOpen('kb')} />
               <div className="set-row set-row--stack set-logs">
                 <div className="set-row-line">
                   <span className="set-ico" aria-hidden="true"><Icon name="terminal" size={16} stroke={2} /></span>
-                  <span className="set-row-text">
-                    <span className="set-row-title">Логи приложения</span>
+                  <button type="button" className="set-row-text set-logs-open" onClick={() => onOpen('logs')}>
+                    <span className="set-row-title">Логи приложения <Icon name="chevronRight" size={14} stroke={2} className="set-inline-chev" /></span>
                     <span className="set-row-sub">Пригодятся поддержке</span>
-                  </span>
+                  </button>
                   <Button size="sm" icon={<Icon name={copied ? 'check' : 'copy'} size={14} stroke={2} />} onClick={copyLogs}>
                     {copied ? 'Скопировано' : 'Копировать'}
                   </Button>
@@ -671,9 +753,11 @@ export default function SettingsPage({
                 chevron={!update?.startsWith('available')}
                 onClick={checkUpdates}
               />
-              <Row icon="file" title="Политика конфиденциальности" chevron onClick={() => window.api?.openExternal?.(`${SITE}/legal?doc=privacy`)} />
-              <Row icon="layers" title="Лицензии третьих сторон" sub="sing-box, Wintun, шрифты и другие" chevron onClick={() => onOpen('licenses')} />
+              <Row icon="file" title="Политика конфиденциальности" chevron onClick={() => onOpen('privacy')} />
             </Glass>
+            <button type="button" className="set-small-link" onClick={() => onOpen('licenses')}>
+              <Icon name="layers" size={12} stroke={2} />Лицензии третьих сторон
+            </button>
           </Section>
 
           {authed && hasAccess && !plan?.canceled && (

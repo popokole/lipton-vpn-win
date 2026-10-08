@@ -12,6 +12,8 @@ export const STATUS_LABEL = {
   expired: 'истекла',
   inactive: 'нет подписки',
   guest: 'пробный доступ',
+  'guest-ended': 'пробный доступ закончился',
+  daily: 'бесплатные минуты',
 }
 
 export function plural(n, one, few, many) {
@@ -69,33 +71,56 @@ function toMs(v) {
   return Number.isNaN(t) ? null : t
 }
 
+// Пробный доступ на минуты (гость или «15 минут бесплатно»): остаток и прогресс.
+function minutesTrial(sub, now) {
+  const until = toMs(sub.expiresAt)
+  const total = until && sub.addedAt ? Math.max(until - toMs(sub.addedAt), 1) : null
+  const msLeft = until ? Math.max(0, until - now) : 0
+  return { until, total, msLeft, progress: total ? Math.max(0, Math.min(1, msLeft / total)) : 0 }
+}
+
 // planSummary — что показать в карточке тарифа.
-//   subscriptions — из settings (managed — подписка аккаунта, isTrial без managed — гостевой тест-доступ)
+//   subscriptions — из settings (managed — подписка аккаунта, isTrial без managed — гостевой
+//                   доступ, isTrial + daily — «15 минут бесплатно» у вошедшего без подписки)
 //   view — ответ /me/subscription (может быть ещё не загружен)
 //   config — /config (тарифы с code/title/period_days)
 // Результат: { kind, title, statusLabel, daysLeft, until, untilLabel, progress, msLeft, totalMs, bypass }
-//   kind: 'active' | 'trial' | 'expired' | 'none' | 'guest'
+//   kind: 'active' | 'trial' | 'expired' | 'none' | 'guest' | 'guest-ended' | 'daily'
 export function planSummary({ subscriptions = [], view = null, config = null, guest = false, now = Date.now() } = {}) {
   const subs = Array.isArray(subscriptions) ? subscriptions : []
   const managed = subs.find(s => s && s.managed)
-  const testSub = subs.find(s => s && s.isTrial && !s.managed)
+  const testSub = subs.find(s => s && s.isTrial && !s.managed && !s.daily)
+  const dailySub = subs.find(s => s && s.isTrial && !s.managed && s.daily)
   const tariffs = (config && Array.isArray(config.tariffs)) ? config.tariffs : []
+  const trialBase = { daysLeft: 0, untilLabel: '', bypass: false, code: null, periodDays: 0, priceKopeks: null, canceled: false }
 
-  // Гостевой тест-доступ (без аккаунта)
+  // Гостевой доступ (без аккаунта)
   if (!managed && testSub && (guest || !view)) {
-    const until = toMs(testSub.expiresAt)
-    const total = until && testSub.addedAt ? Math.max(until - toMs(testSub.addedAt), 1) : null
-    const msLeft = until ? Math.max(0, until - now) : 0
+    const t = minutesTrial(testSub, now)
     return {
-      kind: 'guest', title: 'Пробный доступ', statusLabel: STATUS_LABEL.guest,
-      daysLeft: 0, until, untilLabel: '', msLeft, totalMs: total,
-      progress: total ? Math.max(0, Math.min(1, msLeft / total)) : 0, bypass: false,
-      code: null, periodDays: 0, priceKopeks: null, canceled: false,
+      ...trialBase, kind: 'guest', title: 'Пробный доступ', statusLabel: STATUS_LABEL.guest,
+      until: t.until, msLeft: t.msLeft, totalMs: t.total, progress: t.progress,
+    }
+  }
+  // Гость, у которого пробный доступ закончился (подписка уже убрана)
+  if (guest && !managed && !testSub) {
+    return {
+      ...trialBase, kind: 'guest-ended', title: 'Пробный доступ', statusLabel: STATUS_LABEL['guest-ended'],
+      until: null, msLeft: 0, totalMs: null, progress: 0,
     }
   }
 
   const status = view?.status || managed?.status || (managed ? 'active' : 'inactive')
   const hasAccess = !!(view ? view.subscription_url || ['active', 'grace', 'trial'].includes(view.status) : managed)
+
+  // «15 минут бесплатно» у вошедшего без подписки
+  if (!hasAccess && dailySub) {
+    const t = minutesTrial(dailySub, now)
+    return {
+      ...trialBase, kind: 'daily', title: '15 минут бесплатно', statusLabel: STATUS_LABEL.daily,
+      until: t.until, msLeft: t.msLeft, totalMs: t.total, progress: t.progress,
+    }
+  }
   const overlay = view?.overlay || managed?.overlay || null
   const code = view?.tariff_code || null
   const tariff = code ? tariffs.find(t => t && t.code === code) : null
