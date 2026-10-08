@@ -1,0 +1,411 @@
+/* Компоненты дизайн-системы: стекло, плитки, капсулы, тумблер, сегменты,
+   кнопки, логотип и живое свечение «Аврора». Размеры — из макетов new-pc-*. */
+
+/* ─── Стекло и плитки ────────────────────────────────────────────────────── */
+.ui-glass {
+  position: relative;
+  border-radius: var(--r-tile);
+  background: linear-gradient(180deg, var(--glass-hi) 0px, transparent 56px), var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-inset), var(--glass-shadow);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+/* Светящаяся кромка сверху (как у «Сайты видят вас») — в цвете состояния */
+.ui-glass--edge::before {
+  content: '';
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--st-fill-1) 28%, var(--st-fill-2) 72%, transparent 100%);
+  opacity: 0.85;
+  pointer-events: none;
+}
+.ui-glass--panel { border-radius: var(--r-panel); }
+.ui-glass--card { border-radius: var(--r-card); }
+
+.ui-tile {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ui-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 16px;
+}
+.ui-tile-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--c-text-2);
+  white-space: nowrap;
+}
+.ui-tile-title svg { color: var(--st-accent); flex-shrink: 0; }
+.ui-tile-meta {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+}
+.ui-tile-body { margin-top: 10px; min-width: 0; }
+
+/* Появление плиток с шагом 80 мс */
+@keyframes uiRise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.ui-rise {
+  animation: uiRise 0.5s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* ─── Заголовки разделов ─────────────────────────────────────────────────── */
+.ui-h1 {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+  color: var(--c-text);
+}
+.ui-h1-sub {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--c-text-2);
+}
+.ui-overline {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+}
+
+/* ─── Логотип ────────────────────────────────────────────────────────────── */
+.ui-logo { display: block; flex-shrink: 0; }
+.ui-logo-box {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: var(--c-fill-1);
+  border: 1px solid var(--c-line-2);
+  box-shadow: var(--glass-inset);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Капсула (чип) ──────────────────────────────────────────────────────── */
+.ui-capsule {
+  height: 24px;
+  padding: 0 10px 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--c-line-2);
+  background: var(--c-fill-1);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--c-text-2);
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.ui-capsule svg { flex-shrink: 0; display: block; }
+.ui-capsule--accent svg { color: var(--st-accent); }
+.ui-capsule--cyan svg { color: var(--cyan); }
+.ui-capsule--muted { opacity: 0.6; }
+.ui-capsule--state {
+  border-color: color-mix(in srgb, var(--st-dot) 45%, transparent);
+  background: color-mix(in srgb, var(--st-dot) 12%, transparent);
+  color: var(--c-text);
+}
+button.ui-capsule:hover { background: var(--c-fill-2); color: var(--c-text); }
+
+/* Точка статуса со свечением */
+.ui-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--st-dot);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-dot) 20%, transparent), 0 0 12px var(--st-glow);
+  flex-shrink: 0;
+}
+@keyframes uiDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.ui-dot--pulse { animation: uiDotPulse 1.2s var(--ease) infinite; }
+
+/* Бейдж-счётчик (непрочитанные новости) */
+.ui-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--st-dot);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Тумблер ────────────────────────────────────────────────────────────── */
+.ui-switch {
+  flex-shrink: 0;
+  position: relative;
+  width: 46px;
+  height: 28px;
+  border-radius: var(--r-pill);
+  background: var(--c-fill-3);
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  transition: background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.ui-switch::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: var(--switch-thumb-shadow);
+  transition: transform var(--dur) var(--ease);
+}
+.ui-switch[aria-checked='true'] {
+  background: linear-gradient(90deg, var(--c-accent-fill-1) 0%, var(--c-accent-fill-2) 100%);
+  box-shadow: 0 0 14px var(--c-accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.ui-switch[aria-checked='true']::after { transform: translateX(18px); }
+.ui-switch:disabled { opacity: 0.5; }
+
+/* ─── Сегменты ───────────────────────────────────────────────────────────── */
+.ui-seg {
+  position: relative;
+  height: 40px;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  background: var(--c-fill-1);
+  border: 1px solid var(--c-line);
+  display: flex;
+  gap: 4px;
+}
+.ui-seg-btn {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--nav-fg);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.ui-seg-btn:hover { color: var(--c-text); }
+.ui-seg-btn[aria-checked='true'] {
+  background: var(--seg-active-bg);
+  box-shadow: var(--seg-active-shadow);
+  color: var(--seg-active-fg);
+  font-weight: 600;
+}
+.ui-seg-btn svg { flex-shrink: 0; display: block; }
+/* Двухстрочный вариант («Весь трафик · TUN · игры и UDP») */
+.ui-seg--tall { height: 52px; border-radius: var(--r-field); }
+.ui-seg--tall .ui-seg-btn { height: 44px; border-radius: 13px; flex-direction: column; gap: 0; }
+.ui-seg-sub { font-size: 11px; font-weight: 500; line-height: 14px; color: var(--c-text-3); }
+
+/* ─── Кнопки ─────────────────────────────────────────────────────────────── */
+.ui-btn {
+  height: 40px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur) var(--ease),
+    background var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.ui-btn svg { display: block; flex-shrink: 0; }
+.ui-btn:active:not(:disabled) { transform: scale(0.97); }
+.ui-btn:disabled { opacity: 0.55; }
+.ui-btn--sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.ui-btn--lg { height: 52px; padding: 0 28px; font-size: 15px; }
+.ui-btn--block { width: 100%; }
+
+.ui-btn--primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  box-shadow: var(--btn-primary-shadow);
+}
+.ui-btn--primary:hover:not(:disabled) { filter: brightness(1.04); }
+
+.ui-btn--glass {
+  background: var(--btn-glass-bg);
+  border: 1px solid var(--btn-glass-border);
+  box-shadow: var(--btn-glass-shadow);
+  color: var(--c-text);
+}
+.ui-btn--glass:hover:not(:disabled) { background: linear-gradient(180deg, var(--glass-hi) 0px, transparent 16px), var(--c-fill-2); }
+
+.ui-btn--ghost { color: var(--c-text-2); }
+.ui-btn--ghost:hover:not(:disabled) { background: var(--c-hover); color: var(--c-text); }
+
+.ui-btn--danger { color: var(--c-danger); background: color-mix(in srgb, var(--c-danger) 10%, transparent); }
+.ui-btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--c-danger) 16%, transparent); }
+
+/* Иконка-кнопка (40×32 как в заголовке окна) */
+.ui-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-2);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.ui-icon-btn:hover { background: var(--c-hover); color: var(--c-text); }
+
+/* Прогресс-полоса */
+.ui-progress {
+  position: relative;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--c-fill-2);
+  overflow: hidden;
+}
+.ui-progress > i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--st-fill-1) 0%, var(--st-fill-2) 100%);
+  box-shadow: 0 0 10px var(--st-glow);
+  transition: width 0.6s var(--ease);
+}
+.ui-progress--6 { height: 6px; }
+
+/* Спиннер */
+@keyframes uiSpin { to { transform: rotate(360deg); } }
+.ui-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--c-fill-3);
+  border-top-color: var(--st-dot);
+  animation: uiSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ─── Аврора — живое свечение ────────────────────────────────────────────── */
+.aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  isolation: isolate;
+  pointer-events: none;
+  background: var(--c-bg);
+  contain: strict;
+}
+.aur-layer {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: var(--aur-blend);
+}
+/* Смена палитры — кросс-фейд слоёв за 1,6 с */
+@keyframes aurIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes aurOut { from { opacity: 1; } to { opacity: 0; } }
+.aur-layer.is-in { animation: aurIn var(--dur-state) var(--ease) both; }
+.aur-layer.is-out { animation: aurOut var(--dur-state) var(--ease) both; }
+
+.aur-p-active { --a1: var(--aur-active-1); --a2: var(--aur-active-2); --a3: var(--aur-active-3); --a4: var(--aur-active-core); }
+.aur-p-off { --a1: var(--aur-off-1); --a2: var(--aur-off-2); --a3: var(--aur-off-3); --a4: var(--aur-off-core); }
+.aur-p-bypass { --a1: var(--aur-bypass-1); --a2: var(--aur-bypass-2); --a3: var(--aur-bypass-3); --a4: var(--aur-bypass-core); }
+
+.aur-b {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--c) 0%, transparent 70%);
+  filter: blur(var(--blur, 80px));
+  opacity: var(--o, 0.12);
+  will-change: transform;
+  animation:
+    aurDrift var(--da, 23s) ease-in-out infinite alternate,
+    aurFloat var(--db, 29s) ease-in-out infinite alternate;
+}
+/* Дрейф — отдельные свойства translate и transform, чтобы движения складывались */
+@keyframes aurDrift {
+  from { translate: 0 0; }
+  to { translate: var(--dx, 40px) var(--dy, 30px); }
+}
+@keyframes aurFloat {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(var(--tx, -20px), var(--ty, 20px)) scale(var(--s, 1.1)); }
+}
+/* «Дыхание» ядра */
+@keyframes aurBreath {
+  0%, 100% { scale: 1; }
+  50% { scale: 1.08; }
+}
+.aur-b4.aur-core {
+  animation:
+    aurDrift var(--da, 19.5s) ease-in-out infinite alternate,
+    aurFloat var(--db, 30s) ease-in-out infinite alternate,
+    aurBreath var(--dbr, 6s) ease-in-out infinite;
+}
+
+/* Фон окна: 4 больших тусклых пятна. Положения и размеры — доли окна 960×620
+   (vw), чтобы в развёрнутом окне свечение росло вместе с ним. */
+.aurora--page .aur-b1 { --c: var(--a1); left: -16.7%; top: -32%; width: 41.7vw; height: 41.7vw; --blur: 80px; --o: var(--aur-page-o1); --da: 23s; --db: 29s; --dx: 60px; --dy: 40px; --tx: -20px; --ty: 30px; --s: 1.12; }
+.aurora--page .aur-b2 { --c: var(--a2); left: 64.6%; top: -22.6%; width: 43.75vw; height: 43.75vw; --blur: 90px; --o: var(--aur-page-o2); --da: 19s; --db: 26s; --dx: -56px; --dy: 44px; --tx: 24px; --ty: 20px; --s: 1.1; }
+.aurora--page .aur-b3 { --c: var(--a3); left: 68.75%; top: 51.6%; width: 43.75vw; height: 43.75vw; --blur: 90px; --o: var(--aur-page-o3); --da: 27s; --db: 21s; --dx: -50px; --dy: -40px; --tx: -20px; --ty: 26px; --s: 1.14; }
+.aurora--page .aur-b4 { --c: var(--a1); left: 41.7%; top: 64.5%; width: 33.3vw; height: 33.3vw; --blur: 90px; --o: var(--aur-page-o4); --da: 25s; --db: 31s; --dx: 54px; --dy: -36px; --tx: -30px; --ty: -16px; --s: 1.12; }
+
+/* Внутри hero-карточки: яркое свечение снизу + «дыхание» ядра. Размеры — доли
+   ширины карточки (288 px в макете; у .hero container-type: inline-size). */
+.aurora--hero { background: transparent; }
+.aurora--hero .aur-b1 { --c: var(--a1); left: -16%; top: 30%; width: 132cqw; height: 132cqw; --blur: 56px; --o: var(--aur-hero-o1); --da: 18s; --db: 22s; --dx: 38px; --dy: -10px; --tx: -16px; --ty: 14px; --s: 1.06; }
+.aurora--hero .aur-b2 { --c: var(--a2); left: -59%; top: 47%; width: 118cqw; height: 118cqw; --blur: 64px; --o: var(--aur-hero-o2); --da: 20s; --db: 28s; --dx: 48px; --dy: -20px; --tx: 14px; --ty: 24px; --s: 1.12; }
+.aurora--hero .aur-b3 { --c: var(--a3); left: 45%; top: 55%; width: 111cqw; height: 111cqw; --blur: 64px; --o: var(--aur-hero-o3); --da: 17s; --db: 24s; --dx: -44px; --dy: 18px; --tx: -10px; --ty: -22px; --s: 1.1; }
+.aurora--hero .aur-b4 { --c: var(--a4); left: 22%; top: 47%; width: 55.5cqw; height: 55.5cqw; --blur: 36px; --o: var(--aur-hero-o4); --dx: 30px; --dy: -8px; --tx: -18px; --ty: 10px; --s: 1.04; }
+
+/* Плёночное зерно поверх свечения */
+.aurora-grain {
+  position: absolute;
+  inset: 0;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: var(--grain-blend);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='220' height='220' filter='url(%23n)'/></svg>");
+  background-size: 220px 220px;
+}

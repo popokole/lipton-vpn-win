@@ -1,0 +1,309 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Дизайн-токены Lipton VPN (редизайн 2026): цвета, стекло, свечение, радиусы,
+   движение. Тёмная и светлая темы — через :root[data-theme].
+
+   TODO(redesign): когда появится канонический scripts/design/tokens.json
+   (пакет G1, генератор gen-tokens.mjs), этот файл заменить сгенерированной
+   копией и руками больше не править. Значения перенесены из макетов
+   new-pc-*, new-combo-*, new-demo-theme.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Цвета свечения регистрируем как <color>, чтобы они плавно переходили. */
+@property --st-dot { syntax: '<color>'; inherits: true; initial-value: #22E58A; }
+@property --st-accent { syntax: '<color>'; inherits: true; initial-value: #22E58A; }
+@property --st-fill-1 { syntax: '<color>'; inherits: true; initial-value: #22E58A; }
+@property --st-fill-2 { syntax: '<color>'; inherits: true; initial-value: #22D3EE; }
+@property --st-glow { syntax: '<color>'; inherits: true; initial-value: rgba(34, 229, 138, 0.5); }
+
+:root {
+  /* Шрифты: Onest — интерфейс, Unbounded — крупные цифры и заголовки.
+     Без сети — системный шрифт. */
+  --font-ui: 'Onest', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Unbounded', 'Onest', system-ui, 'Segoe UI', sans-serif;
+
+  /* Радиусы */
+  --r-panel: 28px;   /* большая карточка (hero) */
+  --r-bento: 24px;   /* плитка бенто */
+  --r-tile: 20px;    /* стеклянная плитка ПК */
+  --r-card: 18px;    /* карточка в меню */
+  --r-field: 16px;   /* сегмент «Режим подключения», поля */
+  --r-sm: 12px;
+  --r-xs: 8px;
+  --r-pill: 999px;   /* капсула */
+
+  /* Отступы */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Каркас окна */
+  --titlebar-h: 40px;
+  --sidebar-w: 216px;
+  --content-pad: 24px;
+
+  /* Движение */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 0.18s;
+  --dur: 0.28s;
+  --dur-state: 1.6s;   /* смена палитры свечения по состоянию */
+  --dur-theme: 1.6s;   /* раскрытие темы кругом */
+  --stagger: 80ms;     /* появление плиток */
+
+  /* Бренд (не зависит от темы) */
+  --brand-1: #34F5A3;
+  --brand-2: #0FA968;
+  --emerald: #22E58A;
+  --mint: #7CF7C4;
+  --cyan: #22D3EE;
+  --blue: #3B82F6;
+  --orange: #FF7A1A;
+  --orange-2: #FFA24C;
+  --orange-3: #FF4E1A;
+  --peach: #FFC08A;
+  --bypass-1: #3B6BFF;
+  --bypass-2: #8B5CF6;
+  --bypass-core: #A9BCFF;
+  --danger: #FF5B4D;
+  --on-accent: #04140C;
+}
+
+/* ─── Тёмная тема (по умолчанию) ─────────────────────────────────────────── */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --c-bg: #050807;
+  --c-bg-rgb: 5, 8, 7;
+  --c-text: #FFFFFF;
+  --c-text-2: rgba(255, 255, 255, 0.72);
+  --c-text-3: rgba(255, 255, 255, 0.55);
+  --c-text-4: rgba(255, 255, 255, 0.4);
+  --c-line: rgba(255, 255, 255, 0.06);       /* волосяные линии каркаса */
+  --c-line-2: rgba(255, 255, 255, 0.10);     /* обводка стекла */
+  --c-fill-1: rgba(255, 255, 255, 0.05);     /* капсулы, дорожки сегментов */
+  --c-fill-2: rgba(255, 255, 255, 0.08);     /* дорожки прогресса */
+  --c-fill-3: rgba(255, 255, 255, 0.14);     /* активный сегмент, выключенный тумблер */
+  --c-hover: rgba(255, 255, 255, 0.05);
+  --c-window-edge: rgba(255, 255, 255, 0.10);
+
+  --c-accent: #22E58A;        /* текст/иконки акцента */
+  --c-accent-icon: #22E58A;
+  --c-accent-fill-1: #22E58A; /* градиент тумблеров и прогресса */
+  --c-accent-fill-2: #22D3EE;
+  --c-accent-glow: rgba(34, 229, 138, 0.38);
+  --c-warn: #FFA24C;
+  --c-danger: #FF6B5E;
+
+  /* Стекло */
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-hi: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+  --glass-blur: blur(24px) saturate(140%);
+
+  /* Каркас */
+  --titlebar-bg: rgba(255, 255, 255, 0.02);
+  --titlebar-fg: rgba(255, 255, 255, 0.72);
+  --sidebar-bg: rgba(255, 255, 255, 0.03);
+  --nav-fg: rgba(255, 255, 255, 0.62);
+  --nav-active-bg: rgba(255, 255, 255, 0.10);
+  --nav-active-fg: #FFFFFF;
+  --nav-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --card-hi: rgba(255, 255, 255, 0.08);
+  --card-border: rgba(255, 255, 255, 0.10);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 12px 32px rgba(0, 0, 0, 0.25);
+
+  /* Кнопки */
+  --btn-primary-bg: linear-gradient(180deg, #FFFFFF 0%, #EEF3F0 100%);
+  --btn-primary-fg: #0B0E0D;
+  --btn-primary-shadow: 0 10px 30px rgba(0, 0, 0, 0.28), inset 0 -2px 0 rgba(0, 0, 0, 0.06);
+  --btn-glass-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0px, rgba(255, 255, 255, 0) 16px), rgba(255, 255, 255, 0.07);
+  --btn-glass-border: rgba(255, 255, 255, 0.18);
+  --btn-glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 6px 18px rgba(0, 0, 0, 0.2);
+  --switch-thumb-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --seg-active-bg: rgba(255, 255, 255, 0.14);
+  --seg-active-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 4px 12px rgba(0, 0, 0, 0.25);
+  --seg-active-fg: #FFFFFF;
+
+  /* Свечение «Аврора»: смешивание и яркость пятен */
+  --aur-blend: screen;
+  --aur-page-o1: 0.14;
+  --aur-page-o2: 0.12;
+  --aur-page-o3: 0.14;
+  --aur-page-o4: 0.10;
+  --aur-hero-o1: 0.85;
+  --aur-hero-o2: 0.58;
+  --aur-hero-o3: 0.5;
+  --aur-hero-o4: 0.35;
+  --grain-opacity: 0.08;
+  --grain-blend: overlay;
+
+  /* Палитры свечения: active — подключено, off — выключено / нет подписки,
+     bypass — тариф «Обход глушилок» */
+  --aur-active-1: #22E58A;
+  --aur-active-2: #22D3EE;
+  --aur-active-3: #3B82F6;
+  --aur-active-core: #7CF7C4;
+  --aur-off-1: #FF7A1A;
+  --aur-off-2: #FFA24C;
+  --aur-off-3: #FF4E1A;
+  --aur-off-core: #FFC08A;
+  --aur-bypass-1: #3B6BFF;
+  --aur-bypass-2: #8B5CF6;
+  --aur-bypass-3: #22D3EE;
+  --aur-bypass-core: #A9BCFF;
+
+  /* Цвета состояния (точка статуса, подписи, прогресс) */
+  --st-active-dot: #22E58A;
+  --st-active-accent: #22E58A;
+  --st-active-fill-1: #22E58A;
+  --st-active-fill-2: #22D3EE;
+  --st-active-glow: rgba(34, 229, 138, 0.5);
+  --st-off-dot: #FF7A1A;
+  --st-off-accent: #FFA24C;
+  --st-off-fill-1: #FF7A1A;
+  --st-off-fill-2: #FFA24C;
+  --st-off-glow: rgba(255, 122, 26, 0.5);
+  --st-bypass-dot: #5B83FF;
+  --st-bypass-accent: #9DB2FF;
+  --st-bypass-fill-1: #3B6BFF;
+  --st-bypass-fill-2: #8B5CF6;
+  --st-bypass-glow: rgba(91, 131, 255, 0.5);
+}
+
+/* ─── Светлая тема ───────────────────────────────────────────────────────── */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --c-bg: #F3F1EC;
+  --c-bg-rgb: 243, 241, 236;
+  --c-text: #0E1412;
+  --c-text-2: rgba(14, 20, 18, 0.64);
+  --c-text-3: rgba(14, 20, 18, 0.5);
+  --c-text-4: rgba(14, 20, 18, 0.38);
+  --c-line: rgba(14, 20, 18, 0.06);
+  --c-line-2: rgba(14, 20, 18, 0.10);
+  --c-fill-1: rgba(14, 20, 18, 0.05);
+  --c-fill-2: rgba(14, 20, 18, 0.08);
+  --c-fill-3: rgba(14, 20, 18, 0.14);
+  --c-hover: rgba(14, 20, 18, 0.05);
+  --c-window-edge: rgba(14, 20, 18, 0.10);
+
+  --c-accent: #067A4B;
+  --c-accent-icon: #0FA968;
+  --c-accent-fill-1: #12C97C;
+  --c-accent-fill-2: #10B9D4;
+  --c-accent-glow: rgba(15, 169, 104, 0.28);
+  --c-warn: #C2560C;
+  --c-danger: #D93A2B;
+
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-hi: rgba(255, 255, 255, 0.32);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-shadow: 0 8px 24px rgba(20, 40, 30, 0.08);
+  --glass-blur: blur(24px) saturate(160%);
+
+  --titlebar-bg: rgba(255, 255, 255, 0.35);
+  --titlebar-fg: rgba(14, 20, 18, 0.6);
+  --sidebar-bg: rgba(255, 255, 255, 0.4);
+  --nav-fg: rgba(14, 20, 18, 0.6);
+  --nav-active-bg: #0E1412;
+  --nav-active-fg: #FFFFFF;
+  --nav-active-shadow: 0 6px 16px rgba(14, 20, 18, 0.18);
+  --card-bg: rgba(255, 255, 255, 0.6);
+  --card-hi: rgba(255, 255, 255, 0.4);
+  --card-border: rgba(255, 255, 255, 0.9);
+  --card-shadow: inset 0 1px 0 #FFFFFF, 0 8px 24px rgba(20, 40, 30, 0.08);
+
+  --btn-primary-bg: #0E1412;
+  --btn-primary-fg: #FFFFFF;
+  --btn-primary-shadow: 0 10px 28px rgba(14, 20, 18, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --btn-glass-bg: linear-gradient(180deg, #FFFFFF 0%, rgba(255, 255, 255, 0.86) 100%);
+  --btn-glass-border: rgba(14, 20, 18, 0.08);
+  --btn-glass-shadow: inset 0 1px 0 #FFFFFF, 0 4px 12px rgba(20, 40, 30, 0.10);
+  --switch-thumb-shadow: 0 2px 6px rgba(14, 20, 18, 0.25);
+  --seg-active-bg: #FFFFFF;
+  --seg-active-shadow: inset 0 1px 0 #FFFFFF, 0 4px 12px rgba(20, 40, 30, 0.12);
+  --seg-active-fg: #0E1412;
+
+  --aur-blend: multiply;
+  --aur-page-o1: 0.55;
+  --aur-page-o2: 0.5;
+  --aur-page-o3: 0.45;
+  --aur-page-o4: 0.4;
+  --aur-hero-o1: 0.85;
+  --aur-hero-o2: 0.72;
+  --aur-hero-o3: 0.7;
+  --aur-hero-o4: 0.6;
+  --grain-opacity: 0.05;
+  --grain-blend: multiply;
+
+  /* Пастель для multiply поверх #F3F1EC */
+  --aur-active-1: #7EF0B8;
+  --aur-active-2: #6FE3F0;
+  --aur-active-3: #8DB8FF;
+  --aur-active-core: #FFC9A0;
+  --aur-off-1: #FFB57E;
+  --aur-off-2: #FFA285;
+  --aur-off-3: #FFC9A0;
+  --aur-off-core: #FFD2AE;
+  --aur-bypass-1: #8DB8FF;
+  --aur-bypass-2: #C3B0FF;
+  --aur-bypass-3: #6FE3F0;
+  --aur-bypass-core: #C3B0FF;
+
+  --st-active-dot: #0FA968;
+  --st-active-accent: #067A4B;
+  --st-active-fill-1: #12C97C;
+  --st-active-fill-2: #10B9D4;
+  --st-active-glow: rgba(15, 169, 104, 0.3);
+  --st-off-dot: #FF7A1A;
+  --st-off-accent: #C2560C;
+  --st-off-fill-1: #FF8A3D;
+  --st-off-fill-2: #FFB57E;
+  --st-off-glow: rgba(255, 122, 26, 0.3);
+  --st-bypass-dot: #3B6BFF;
+  --st-bypass-accent: #3446C9;
+  --st-bypass-fill-1: #3B6BFF;
+  --st-bypass-fill-2: #8B5CF6;
+  --st-bypass-glow: rgba(59, 107, 255, 0.3);
+}
+
+/* ─── Состояние приложения → цвета акцента (плавно, за 1,6 с) ─────────────── */
+[data-state] {
+  transition:
+    --st-dot var(--dur-state) var(--ease),
+    --st-accent var(--dur-state) var(--ease),
+    --st-fill-1 var(--dur-state) var(--ease),
+    --st-fill-2 var(--dur-state) var(--ease),
+    --st-glow var(--dur-state) var(--ease);
+}
+[data-state='active'] {
+  --st-dot: var(--st-active-dot);
+  --st-accent: var(--st-active-accent);
+  --st-fill-1: var(--st-active-fill-1);
+  --st-fill-2: var(--st-active-fill-2);
+  --st-glow: var(--st-active-glow);
+}
+[data-state='off'] {
+  --st-dot: var(--st-off-dot);
+  --st-accent: var(--st-off-accent);
+  --st-fill-1: var(--st-off-fill-1);
+  --st-fill-2: var(--st-off-fill-2);
+  --st-glow: var(--st-off-glow);
+}
+[data-state='bypass'] {
+  --st-dot: var(--st-bypass-dot);
+  --st-accent: var(--st-bypass-accent);
+  --st-fill-1: var(--st-bypass-fill-1);
+  --st-fill-2: var(--st-bypass-fill-2);
+  --st-glow: var(--st-bypass-glow);
+}
