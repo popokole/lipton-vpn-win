@@ -59,6 +59,17 @@ const COMPONENTS = [
     ],
   },
   {
+    name: 'Шрифты Onest и Unbounded',
+    license: 'SIL OFL 1.1',
+    copyright: '© 2021 The Onest Project Authors · © 2022 The Unbounded Project Authors',
+    note: 'Шрифты интерфейса, встроены в приложение (пакеты @fontsource) без изменений.',
+    links: [
+      { label: 'Onest', url: 'https://github.com/simpals/onest' },
+      { label: 'Unbounded', url: 'https://github.com/googlefonts/unbounded' },
+      { label: 'Текст OFL 1.1', url: 'https://openfontlicense.org/open-font-license-official-text/' },
+    ],
+  },
+  {
     name: 'Electron, React, flag-icons',
     license: 'MIT',
     note: 'Оболочка и интерфейс приложения. Лицензии Chromium — в файле LICENSES.chromium.html в папке программы.',
