@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Lipton VPN</title>
+  <script>
+    // Тема до загрузки React, чтобы окно не мигало: main уже выставил
+    // nativeTheme.themeSource, и prefers-color-scheme отдаёт итоговую тему.
+    try {
+      document.documentElement.dataset.theme =
+        window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <div id="root"></div>

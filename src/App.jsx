@@ -1,57 +1,38 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useReducer, useRef } from 'react'
 import TitleBar from './components/TitleBar'
-import ConnectButton from './components/ConnectButton'
-import ServerList from './components/ServerList'
-import SubscriptionPanel from './components/SubscriptionPanel'
-import SettingsPanel from './components/SettingsPanel'
-import PlanesOverlay from './components/PlanesOverlay'
+import Sidebar from './components/Sidebar'
+import Notices from './components/Notices'
 import WelcomeScreen from './components/WelcomeScreen'
 import LoginScreen from './components/LoginScreen'
 import AccountPanel from './components/AccountPanel'
 import SupportPanel from './components/SupportPanel'
-import NewsPanel from './components/NewsPanel'
 import BillingPanel from './components/BillingPanel'
 import HistoryPanel from './components/HistoryPanel'
-import SymbolField from './components/SymbolField'
 import ConnectionCheckPanel from './components/ConnectionCheckPanel'
+import HomePage from './pages/HomePage'
+import ServersPage from './pages/ServersPage'
+import NewsPage from './pages/NewsPage'
+import SettingsPage from './pages/SettingsPage'
+import { Aurora, Glass } from './components/ui'
+import { navReducer, initialNav, topScreen } from './lib/nav.mjs'
+import { planSummary, glowPalette } from './lib/plan.mjs'
+import { flattenServers } from './lib/servers.mjs'
+import { useTheme } from './lib/theme.js'
+import { useWindowMaximized, usePauseWhenHidden, useEscape } from './lib/window.js'
+import { useNow } from './lib/time.js'
 
-function Toast({ toasts, onRemove }) {
-  if (!toasts.length) return null
+// Окно ПК (редизайн): заголовок 40 px, боковое меню 216 px, область контента.
+// Разделы — Главная / Серверы / Новости / Настройки; подэкраны (оплата,
+// поддержка, кабинет, история, проверка соединения) открываются поверх раздела
+// внутри области контента, закрываются «Назад» и Esc.
+
+// Окно без содержимого (загрузка, вход, знакомство) — тот же заголовок и свечение.
+function Frame({ maximized, onToggleMaximize, children }) {
   return (
-    <div className="toast-container">
-      {toasts.map(t => (
-        <div key={t.id} className={`toast toast--${t.type}`}>
-          <div className="toast-field">
-            <SymbolField opacity={0.2} color={t.type === 'error' ? '255,107,90' : '34,229,138'} />
-          </div>
-          <span className="toast-msg">{t.message}</span>
-          <button className="toast-close" onClick={() => onRemove(t.id)}>✕</button>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const COMING_SOON = [
-  { icon: '📊', label: 'Статистика' },
-  { icon: '🤖', label: 'Android' },
-  { icon: '🍎', label: 'iOS' },
-  { icon: '💻', label: 'Mac' },
-  { icon: '📺', label: 'TV' },
-]
-
-function ComingSoonCard({ item }) {
-  const [shaking, setShaking] = useState(false)
-  function handleClick() {
-    if (shaking) return
-    setShaking(true)
-    setTimeout(() => setShaking(false), 500)
-  }
-  return (
-    <div className={`coming-soon-card${shaking ? ' coming-soon-card--shake' : ''}`} onClick={handleClick}>
-      <span className="coming-soon-icon">{item.icon}</span>
-      <span className="coming-soon-label">{item.label}</span>
-      <span className="coming-soon-badge">Скоро</span>
+    <div className="app" data-state="active" data-maximized={maximized ? 'true' : 'false'}>
+      <Aurora variant="page" palette="active" />
+      <TitleBar maximized={maximized} onToggleMaximize={onToggleMaximize} />
+      {children}
     </div>
   )
 }
@@ -60,13 +41,6 @@ export default function App() {
   const [vpnStatus, setVpnStatus] = useState('disconnected')
   const [activeServerId, setActiveServerId] = useState(null)
   const [subscriptions, setSubscriptions] = useState([])
-  const [showSettings, setShowSettings] = useState(false)
-  const [showAccount, setShowAccount] = useState(false)
-  const [showSupport, setShowSupport] = useState(false)
-  const [showBilling, setShowBilling] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
-  const [showNews, setShowNews] = useState(false)
-  const [showCheck, setShowCheck] = useState(false)
   const [pinging, setPinging] = useState(false)
   const [version, setVersion] = useState('')
   const [loading, setLoading] = useState(true)
@@ -74,23 +48,36 @@ export default function App() {
   const [guest, setGuest] = useState(false)
   const [update, setUpdate] = useState(null)
   const [updateAvailable, setUpdateAvailable] = useState(null)
-  const [planeMode, setPlaneMode] = useState(null)
   const [firstLaunch, setFirstLaunch] = useState(false)
   const [expiryWarning, setExpiryWarning] = useState(null)
   const [connectError, setConnectError] = useState(null)
   const [toasts, setToasts] = useState([])
-  const prevStatus = useRef('disconnected')
-  const planeTimer = useRef(null)
+  const [connectedAt, setConnectedAt] = useState(null)
+  const [subView, setSubView] = useState(null)
+  const [config, setConfig] = useState(null)
+  const [vpnPrefs, setVpnPrefs] = useState({ tunMode: true, bypassRu: true })
+
+  const [nav, dispatch] = useReducer(navReducer, initialNav)
+  const { theme, setTheme } = useTheme()
+  const [maximized, toggleMaximize] = useWindowMaximized()
+  usePauseWhenHidden()
+  const toastTimers = useRef(new Set())
 
   const addToast = useCallback((message, type = 'success') => {
     const id = Date.now() + Math.random()
     setToasts(prev => [...prev, { id, message, type }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500)
+    const t = setTimeout(() => {
+      toastTimers.current.delete(t)
+      setToasts(prev => prev.filter(x => x.id !== id))
+    }, 3500)
+    toastTimers.current.add(t)
   }, [])
 
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
+
+  useEffect(() => () => { toastTimers.current.forEach(clearTimeout) }, [])
 
   useEffect(() => {
     Promise.all([
@@ -101,14 +88,29 @@ export default function App() {
       window.api.authState(),
     ]).then(([subs, status, ver, fl, auth]) => {
       setSubscriptions(subs || [])
-      setVpnStatus(status.status || 'disconnected')
-      setActiveServerId(status.serverId || null)
+      setVpnStatus(status?.status || 'disconnected')
+      setActiveServerId(status?.serverId || null)
+      if (status?.connectedAt) setConnectedAt(status.connectedAt)
       setVersion(ver || '')
       setFirstLaunch(!!fl)
       setAuthed(!!auth?.authed)
       setLoading(false)
     })
   }, [])
+
+  // Тариф для карточки в меню: /me/subscription (название — по /config).
+  useEffect(() => {
+    if (!authed) { setSubView(null); return undefined }
+    let alive = true
+    window.api.accountSubscriptionView?.()
+      .then(r => { if (alive && r?.success) setSubView(r.view || null) })
+      .catch(() => {})
+    window.api.accountConfig?.()
+      .then(r => { if (alive && r?.success) setConfig(r.config || null) })
+      .catch(() => {})
+    const off = window.api.onAccountSubscription?.(view => setSubView(view || null))
+    return () => { alive = false; off?.() }
+  }, [authed])
 
   const handleLogin = useCallback(async () => {
     setAuthed(true)
@@ -121,7 +123,7 @@ export default function App() {
     setSubscriptions([])
     setActiveServerId(null)
     setVpnStatus('disconnected')
-    setShowSettings(false)
+    dispatch({ type: 'reset' })
     setGuest(false)
     setAuthed(false)
   }, [])
@@ -137,13 +139,14 @@ export default function App() {
     const offVpn = window.api.onVpnStatus(data => {
       setVpnStatus(data.status)
       setActiveServerId(data.serverId || null)
+      if (data.connectedAt) setConnectedAt(data.connectedAt)
     })
     const offSub = window.api.onSubUpdate(subs => {
       setSubscriptions(subs || [])
     })
     const offUpd = window.api.onUpdateStatus(data => {
       if (data.event === 'downloaded') { setUpdate(data); setUpdateAvailable(null) }
-      if (data.event === 'available')  setUpdateAvailable(data)
+      if (data.event === 'available') setUpdateAvailable(data)
     })
     const offExp = window.api.onExpiryWarning(data => {
       setExpiryWarning(data)
@@ -155,23 +158,25 @@ export default function App() {
     return () => { offVpn?.(); offSub?.(); offUpd?.(); offExp?.(); offAddResult?.() }
   }, [addToast])
 
+  // Начало сессии для таймера. TODO(redesign): connectedAt из main (пакет D3);
+  // пока main его не присылает — отсчёт с момента, когда окно увидело «подключено».
   useEffect(() => {
-    const prev = prevStatus.current
-    prevStatus.current = vpnStatus
-    if (prev === 'disconnected' && vpnStatus === 'connecting') {
-      clearTimeout(planeTimer.current)
-      setPlaneMode('connect')
-      planeTimer.current = setTimeout(() => setPlaneMode(null), 2800)
-    } else if (prev === 'connected' && vpnStatus === 'disconnecting') {
-      clearTimeout(planeTimer.current)
-      setPlaneMode('disconnect')
-      planeTimer.current = setTimeout(() => setPlaneMode(null), 5500)
-    }
+    if (vpnStatus === 'connected') setConnectedAt(t => t || Date.now())
+    else if (vpnStatus !== 'reconnecting') setConnectedAt(null)
   }, [vpnStatus])
 
-  const allServers = subscriptions.flatMap(sub =>
-    (sub.servers || []).map(s => ({ ...s, subId: sub.id, isTrial: sub.isTrial }))
-  )
+  // Режим и «Обход РФ» для чипов на главной — перечитываем при возврате на главную.
+  const onHome = nav.page === 'home' && nav.stack.length === 0
+  useEffect(() => {
+    if (!onHome || loading) return
+    let alive = true
+    Promise.all([window.api.getTunMode?.(), window.api.getBypassRu?.()])
+      .then(([tun, bypass]) => { if (alive) setVpnPrefs({ tunMode: tun !== false, bypassRu: bypass !== false }) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [onHome, loading])
+
+  const allServers = useMemo(() => flattenServers(subscriptions), [subscriptions])
   const activeServer = allServers.find(s => s.id === activeServerId)
 
   const handleConnect = useCallback(async () => {
@@ -218,215 +223,194 @@ export default function App() {
     setPinging(false)
   }, [pinging, subscriptions])
 
+  // Навигация
+  const go = useCallback(page => dispatch({ type: 'go', page }), [])
+  const open = useCallback((screen, params) => dispatch({ type: 'open', screen, params }), [])
+  const back = useCallback(() => dispatch({ type: 'back' }), [])
+  const top = topScreen(nav)
+  useEscape(back, !!top)
+
+  // Гостевой обратный отсчёт тикает раз в секунду, дни подписки — раз в минуту.
+  const guestMode = guest && !authed
+  const now = useNow(guestMode ? 1000 : 60000)
+  const plan = useMemo(
+    () => planSummary({ subscriptions, view: subView, config, guest: guestMode, now }),
+    [subscriptions, subView, config, guestMode, now],
+  )
+  const palette = glowPalette(vpnStatus, plan)
+
+  const openBilling = useCallback(() => {
+    if (authed) open('billing')
+    else setGuest(false) // гость: сначала вход в аккаунт
+  }, [authed, open])
+
   if (loading) {
     return (
-      <div className="app">
-        <TitleBar />
-        <div className="loading"><div className="spinner" /></div>
-      </div>
+      <Frame maximized={maximized} onToggleMaximize={toggleMaximize}>
+        <div className="loading"><span className="ui-spinner ui-spinner--lg" aria-label="Загрузка" /></div>
+      </Frame>
     )
   }
 
-  const statusLabel = {
-    connected:     activeServer?.remark?.replace(/[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF]\s*/g, '') || 'Подключено',
-    connecting:    'Подключение...',
-    reconnecting:  'Переподключение...',
-    disconnecting: 'Отключение...',
-    disconnected:  'Отключено',
-    error:         'Ошибка подключения',
-    'kill-switch': 'Kill Switch активен',
-  }[vpnStatus] || 'Отключено'
-
+  // TODO(redesign): вход и знакомство по макетам new-onb-* — пакет D5.
   if (authed === false && !guest) {
     return (
-      <div className="app">
-        <TitleBar />
-        <LoginScreen onLogin={handleLogin} onTrial={handleTrial} />
-      </div>
+      <Frame maximized={maximized} onToggleMaximize={toggleMaximize}>
+        <div className="gate">
+          <Glass variant="panel" className="gate-card legacy-gate">
+            <LoginScreen onLogin={handleLogin} onTrial={handleTrial} />
+          </Glass>
+        </div>
+      </Frame>
     )
   }
 
   if (firstLaunch) {
     return (
-      <div className="app">
-        <TitleBar />
-        <WelcomeScreen onComplete={async () => {
-          await window.api.completeOnboarding()
-          setFirstLaunch(false)
-        }} />
-      </div>
+      <Frame maximized={maximized} onToggleMaximize={toggleMaximize}>
+        <div className="gate">
+          <Glass variant="panel" className="gate-card legacy-gate">
+            <WelcomeScreen onComplete={async () => {
+              await window.api.completeOnboarding()
+              setFirstLaunch(false)
+            }} />
+          </Glass>
+        </div>
+      </Frame>
     )
   }
 
-  return (
-    <div className="app">
-      <div className="app-bg">
-        <SymbolField opacity={0.09} />
-      </div>
-      <TitleBar
-        onSettings={() => setShowSettings(true)}
-        onAccount={authed ? () => setShowAccount(true) : undefined}
+  const notices = []
+  if (vpnStatus === 'kill-switch') {
+    notices.push({ id: 'kill-switch', tone: 'warn', icon: 'shieldOff', title: 'Kill Switch активен', sub: 'Интернет заблокирован — нажмите «Подключить»' })
+  }
+  if (expiryWarning) {
+    notices.push({
+      id: 'expiry', tone: 'warn', icon: 'clock', title: 'Подписка заканчивается',
+      sub: `«${expiryWarning.subName}» — через ${expiryWarning.label}`,
+      onClose: () => setExpiryWarning(null),
+    })
+  }
+  if (update) {
+    notices.push({
+      id: 'update', tone: 'ok', icon: 'download', title: 'Обновление готово',
+      sub: `Версия ${update.version} загружена`,
+      action: { label: 'Установить', onClick: () => window.api.installUpdate() },
+    })
+  } else if (updateAvailable) {
+    notices.push({ id: 'update-dl', tone: 'info', icon: 'download', title: `Скачивается ${updateAvailable.version}`, sub: 'Обновление загружается…' })
+  }
+  toasts.forEach(t => notices.push({
+    id: t.id,
+    tone: t.type === 'error' ? 'error' : 'ok',
+    icon: t.type === 'error' ? 'alert' : 'check',
+    title: t.message,
+    onClose: () => removeToast(t.id),
+  }))
+
+  let pageEl
+  if (nav.page === 'servers') {
+    pageEl = (
+      <ServersPage
+        servers={allServers}
+        activeServerId={activeServerId}
+        activeServer={activeServer}
+        vpnStatus={vpnStatus}
+        pinging={pinging}
+        onSelect={handleSelectServer}
+        onPingAll={handlePingAll}
+        onEmpty={openBilling}
+        emptyLabel={authed ? 'Оформить подписку' : 'Войти'}
       />
-      <Toast toasts={toasts} onRemove={removeToast} />
+    )
+  } else if (nav.page === 'news') {
+    pageEl = <NewsPage onClose={() => go('home')} />
+  } else if (nav.page === 'settings') {
+    pageEl = (
+      <SettingsPage
+        authed={!!authed}
+        theme={theme}
+        onTheme={setTheme}
+        onOpen={open}
+        onLogin={() => setGuest(false)}
+        onLogout={handleLogout}
+        vpnStatus={vpnStatus}
+      />
+    )
+  } else {
+    pageEl = (
+      <HomePage
+        authed={!!authed}
+        banners={[] /* TODO(redesign): баннеры из админки — следующая волна */}
+        subscriptions={subscriptions}
+        onRefreshSub={() => window.api.accountSync()}
+        onBuy={authed ? () => open('billing') : null}
+        onOpen={open}
+        hero={{
+          status: vpnStatus,
+          palette,
+          connectedAt,
+          tunMode: vpnPrefs.tunMode,
+          bypassRu: vpnPrefs.bypassRu,
+          server: activeServer || allServers[0] || null,
+          serversCount: allServers.length,
+          error: connectError,
+          onConnect: handleConnect,
+          onServers: () => go('servers'),
+        }}
+      />
+    )
+  }
 
-      {guest && !authed && (
-        <div className="guest-banner">
-          <span>Тест-доступ · без аккаунта</span>
-          <button onClick={() => setGuest(false)}>Войти в аккаунт</button>
-        </div>
-      )}
-      {showSettings && (
-        <SettingsPanel
-          onClose={() => setShowSettings(false)}
-          onUpdateFound={() => setShowSettings(false)}
-          onLogout={handleLogout}
-          vpnStatus={vpnStatus}
-          onCheckConnection={() => { setShowSettings(false); setShowCheck(true) }}
+  let screenEl = null
+  if (top) {
+    switch (top.screen) {
+      case 'billing': screenEl = <BillingPanel onClose={back} />; break
+      case 'support': screenEl = <SupportPanel onClose={back} />; break
+      case 'history': screenEl = <HistoryPanel onClose={back} />; break
+      case 'check': screenEl = <ConnectionCheckPanel onClose={back} />; break
+      case 'account':
+        screenEl = (
+          <AccountPanel
+            onClose={back}
+            onLogout={handleLogout}
+            onNews={() => go('news')}
+            onSupport={() => open('support')}
+            onBilling={() => open('billing')}
+            onHistory={() => open('history')}
+          />
+        )
+        break
+      default: screenEl = null
+    }
+  }
+
+  return (
+    <div className="app" data-state={palette} data-maximized={maximized ? 'true' : 'false'}>
+      <Aurora variant="page" palette={palette} />
+      <TitleBar maximized={maximized} onToggleMaximize={toggleMaximize} />
+      <div className="shell">
+        <Sidebar
+          page={nav.page}
+          onNavigate={go}
+          badges={{} /* TODO(redesign): непрочитанные новости — D4 */}
+          plan={plan}
+          version={version}
+          onRenew={openBilling}
+          onLogin={() => setGuest(false)}
         />
-      )}
-      {showCheck && <ConnectionCheckPanel onClose={() => setShowCheck(false)} />}
-      {showAccount && (
-        <AccountPanel
-          onClose={() => setShowAccount(false)}
-          onLogout={handleLogout}
-          onNews={() => { setShowAccount(false); setShowNews(true) }}
-          onSupport={() => { setShowAccount(false); setShowSupport(true) }}
-          onBilling={() => { setShowAccount(false); setShowBilling(true) }}
-          onHistory={() => { setShowAccount(false); setShowHistory(true) }}
-        />
-      )}
-      {showNews && <NewsPanel onClose={() => { setShowNews(false); setShowAccount(true) }} />}
-      {showSupport && <SupportPanel onClose={() => setShowSupport(false)} />}
-      {showBilling && <BillingPanel onClose={() => setShowBilling(false)} />}
-      {showHistory && <HistoryPanel onClose={() => { setShowHistory(false); setShowAccount(true) }} />}
-
-      <PlanesOverlay mode={planeMode} />
-
-      {/* Kill switch banner */}
-      {vpnStatus === 'kill-switch' && (
-        <div className="update-banner update-banner--killswitch">
-          <div className="update-banner-info">
-            <span className="update-banner-icon">🛡</span>
-            <div>
-              <div className="update-banner-title">Kill Switch активен</div>
-              <div className="update-banner-sub">Интернет заблокирован — нажмите «Подключиться»</div>
+        <main className="content">
+          <div className="page" key={nav.page} inert={top ? '' : undefined}>
+            {pageEl}
+          </div>
+          {screenEl && (
+            <div className="legacy-sheet" key={top.screen}>
+              {screenEl}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Expiry warning banner */}
-      {expiryWarning && (
-        <div className="update-banner update-banner--expiry">
-          <div className="update-banner-info">
-            <span className="update-banner-icon">⏰</span>
-            <div>
-              <div className="update-banner-title">Подписка заканчивается</div>
-              <div className="update-banner-sub">«{expiryWarning.subName}» — через {expiryWarning.label}</div>
-            </div>
-          </div>
-          <button className="update-banner-btn" onClick={() => setExpiryWarning(null)}>✕</button>
-        </div>
-      )}
-
-      {/* Update ready banner */}
-      {update && (
-        <div className="update-banner update-banner--ready">
-          <div className="update-banner-info">
-            <span className="update-banner-icon">⬆</span>
-            <div>
-              <div className="update-banner-title">Обновление готово</div>
-              <div className="update-banner-sub">Версия {update.version} загружена</div>
-            </div>
-          </div>
-          <button className="update-banner-btn" onClick={() => window.api.installUpdate()}>
-            Установить
-          </button>
-        </div>
-      )}
-
-      {/* Update downloading banner */}
-      {!update && updateAvailable && (
-        <div className="update-banner update-banner--loading">
-          <div className="update-banner-info">
-            <span className="update-banner-icon">↓</span>
-            <div>
-              <div className="update-banner-title">Скачивается {updateAvailable.version}</div>
-              <div className="update-banner-sub">Обновление загружается...</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className="main">
-        <div className="connect-section">
-          <ConnectButton status={vpnStatus} onConnect={handleConnect} />
-          <div className={`status-text-big status-text-big--${vpnStatus}`}>
-            {statusLabel}
-          </div>
-          {connectError && (
-            <span className="status-error-detail">{connectError}</span>
           )}
-          <span className="status-sub">
-            {vpnStatus === 'connected' && activeServer
-              ? activeServer.remark?.replace(/[\uD83C][\uDDE6-\uDDFF][\uD83C][\uDDE6-\uDDFF]\s*/g, '').trim()
-              : allServers.length > 0
-                ? `${allServers.length} серверов доступно`
-                : 'Добавьте подписку'}
-          </span>
-          {vpnStatus === 'connected' && (
-            <button className="check-pill" onClick={() => setShowCheck(true)}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                <polyline points="9 12 11 14 15 10"/>
-              </svg>
-              Проверка соединения
-            </button>
-          )}
-        </div>
-
-        <div className="divider" />
-
-        <ServerList
-          servers={allServers}
-          activeServerId={activeServerId}
-          onSelect={handleSelectServer}
-          onPingAll={handlePingAll}
-          pinging={pinging}
-        />
-
-        <SubscriptionPanel
-          subscriptions={subscriptions}
-          onRefresh={() => window.api.accountSync()}
-          onBuy={authed ? () => setShowBilling(true) : null}
-        />
-
-        {/* Coming soon */}
-        <div className="section">
-          <div className="section-header">
-            <span className="section-title">Скоро</span>
-          </div>
-          <div className="coming-soon-list">
-            {COMING_SOON.map(item => (
-              <ComingSoonCard key={item.label} item={item} />
-            ))}
-          </div>
-        </div>
-      </main>
-
-      <footer className="footer">
-        <button
-          className="footer-tg"
-          onClick={() => window.api.openExternal('https://t.me/liptonvpn_bot')}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.25 14.47l-2.95-.924c-.64-.203-.654-.64.136-.95l11.52-4.44c.534-.194 1.001.13.606.092z"/>
-          </svg>
-          Telegram
-        </button>
-        <span className="footer-ver">v{version}</span>
-      </footer>
+          <Notices items={notices} />
+        </main>
+      </div>
     </div>
   )
 }

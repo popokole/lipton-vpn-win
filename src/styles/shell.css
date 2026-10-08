@@ -1,0 +1,342 @@
+/* Каркас окна ПК: заголовок 40 px, боковое меню 216 px, область контента.
+   Размеры и цвета — из макетов new-pc-home-on/off, new-pc-servers, new-demo-theme. */
+
+.app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--c-bg);
+  color: var(--c-text);
+}
+/* Тонкая рамка окна (без рамки Windows); в развёрнутом окне не нужна */
+.app::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--c-window-edge);
+  pointer-events: none;
+  z-index: 50;
+}
+.app[data-maximized='true']::after { display: none; }
+
+.app > .aurora { z-index: 0; }
+
+/* ─── Заголовок окна ─────────────────────────────────────────────────────── */
+.titlebar {
+  position: relative;
+  z-index: 40;
+  flex-shrink: 0;
+  height: var(--titlebar-h);
+  padding: 0 4px 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--c-line);
+  -webkit-app-region: drag;
+}
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.titlebar-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+.titlebar-extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  -webkit-app-region: no-drag;
+}
+.titlebar-controls {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+.titlebar-btn {
+  width: 40px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--titlebar-fg);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.titlebar-btn:hover { background: var(--c-hover); color: var(--c-text); }
+.titlebar-btn--close:hover { background: #E5483B; color: #FFFFFF; }
+
+/* ─── Тело: меню + контент ───────────────────────────────────────────────── */
+.shell {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.sidebar {
+  position: relative;
+  flex: 0 0 var(--sidebar-w);
+  width: var(--sidebar-w);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--c-line);
+  min-height: 0;
+}
+.side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.side-nav-btn {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--nav-fg);
+  text-align: left;
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.side-nav-btn:hover { background: var(--c-hover); color: var(--c-text); }
+.side-nav-btn[aria-current='page'] {
+  background: var(--nav-active-bg);
+  box-shadow: var(--nav-active-shadow);
+  color: var(--nav-active-fg);
+  font-weight: 600;
+}
+.side-nav-btn > span:first-of-type { flex: 1; min-width: 0; }
+
+.side-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.side-version {
+  height: 16px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Карточка тарифа внизу меню */
+.plan-card {
+  padding: 14px;
+  border-radius: var(--r-card);
+  background: linear-gradient(180deg, var(--card-hi) 0px, transparent 40px), var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+.plan-card-head {
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.plan-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+.plan-card-title > span { overflow: hidden; text-overflow: ellipsis; }
+.plan-card-title svg { color: var(--st-accent); }
+.plan-card-days {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--st-accent);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.plan-card-sub {
+  margin-top: 2px;
+  height: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--c-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-card .ui-progress { margin-top: 10px; }
+.plan-card .ui-btn { margin-top: 12px; }
+
+/* ─── Область контента ───────────────────────────────────────────────────── */
+.content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.page {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--content-pad);
+  display: flex;
+  flex-direction: column;
+  animation: pageIn 0.36s var(--ease-out) both;
+}
+.page > * { flex-shrink: 0; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.page-head {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  min-height: 32px;
+  margin-bottom: 20px;
+  white-space: nowrap;
+}
+.page-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.page-head-row .page-head { margin-bottom: 0; }
+.page-head-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.page-head-status b { color: var(--c-text); font-weight: 600; }
+
+/* Сетка «hero + колонка плиток» (главная) */
+.home-grid {
+  display: grid;
+  /* hero 288 px при окне 960 (как в макете), растёт с окном до 440 px */
+  grid-template-columns: clamp(272px, 30vw, 440px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+.home-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Две колонки (настройки) */
+.cols-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* Уведомления (обновление, kill switch, истечение подписки) */
+.notices {
+  position: absolute;
+  right: var(--content-pad);
+  bottom: var(--content-pad);
+  z-index: 30;
+  width: min(360px, calc(100% - 2 * var(--content-pad)));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.notice {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--r-card);
+  animation: noticeIn 0.4s var(--ease-out) both;
+}
+@keyframes noticeIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.notice-ico {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--notice-c, var(--st-dot)) 16%, transparent);
+  color: var(--notice-c, var(--st-dot));
+}
+.notice-body { flex: 1; min-width: 0; }
+.notice-title { font-size: 13px; font-weight: 700; line-height: 18px; color: var(--c-text); }
+.notice-sub { font-size: 12px; font-weight: 500; line-height: 16px; color: var(--c-text-2); }
+.notice--warn { --notice-c: var(--orange); }
+.notice--error { --notice-c: var(--c-danger); }
+.notice--ok { --notice-c: var(--c-accent-icon); }
+.notice--info { --notice-c: var(--cyan); }
+
+/* Загрузка и экраны до входа */
+.loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gate {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px 24px;
+}
+.gate-card {
+  width: 100%;
+  max-width: 420px;
+  margin: auto 0;
+  border-radius: var(--r-panel);
+  overflow: hidden;
+}
