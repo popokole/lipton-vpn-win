@@ -1,7 +1,6 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, shell, nativeImage, session } = require('electron')
+const { app, BrowserWindow, ipcMain, Tray, Menu, shell, nativeImage, nativeTheme, screen, session } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const zlib = require('zlib')
 
 // Logger must be required first so it patches console before anything else logs
 const logger = require('./electron/logger')
@@ -12,6 +11,8 @@ const legacyCore = require('./electron/vpn-manager')
 const singboxCore = require('./electron/singbox-manager')
 const apiClient = require('./electron/api-client')
 const connectionCheck = require('./electron/connection-check')
+const windowState = require('./electron/window-state')
+const { makeLogoPng } = require('./electron/tray-icon')
 const { setupAutoUpdater } = require('./electron/auto-updater')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
@@ -89,91 +90,57 @@ if (!app.requestSingleInstanceLock()) {
 let mainWindow = null
 let tray = null
 
-// ─── Tray icon generator ──────────────────────────────────────────────────────
+// ─── Tray icon ────────────────────────────────────────────────────────────────
+// Фирменный знак в цвете состояния: 16 px и 32 px (для экранов с масштабом 200%).
 
-const POLY = 0xEDB88320
-let _crcTable = null
-function getCrcTable() {
-  if (_crcTable) return _crcTable
-  _crcTable = new Uint32Array(256)
-  for (let n = 0; n < 256; n++) {
-    let c = n
-    for (let k = 0; k < 8; k++) c = (c & 1) ? (POLY ^ (c >>> 1)) : (c >>> 1)
-    _crcTable[n] = c
-  }
-  return _crcTable
-}
-function crc32(buf) {
-  const table = getCrcTable()
-  let crc = 0xFFFFFFFF
-  for (let i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]) & 0xFF]
-  return (crc ^ 0xFFFFFFFF) >>> 0
-}
-function pngChunk(type, data) {
-  const t = Buffer.from(type, 'ascii')
-  const crcVal = crc32(Buffer.concat([t, data]))
-  const out = Buffer.alloc(4 + 4 + data.length + 4)
-  out.writeUInt32BE(data.length, 0)
-  t.copy(out, 4)
-  data.copy(out, 8)
-  out.writeUInt32BE(crcVal, 8 + data.length)
-  return out
-}
-function makeTrayIconPng(r, g, b) {
-  const S = 16
-  const cx = (S - 1) / 2, cy = (S - 1) / 2, radius = S / 2 - 1.5
-  const rows = []
-  for (let y = 0; y < S; y++) {
-    const row = [0]
-    for (let x = 0; x < S; x++) {
-      const d = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
-      if (d <= radius) row.push(r, g, b, 255)
-      else row.push(0, 0, 0, 0)
-    }
-    rows.push(Buffer.from(row))
-  }
-  const raw = Buffer.concat(rows)
-  const compressed = zlib.deflateSync(raw, { level: 1 })
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(S, 0); ihdr.writeUInt32BE(S, 4)
-  ihdr[8] = 8; ihdr[9] = 6
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    pngChunk('IHDR', ihdr),
-    pngChunk('IDAT', compressed),
-    pngChunk('IEND', Buffer.alloc(0)),
-  ])
-}
-
-let _iconConnected = null
-let _iconDisconnected = null
+const _trayIcons = {}
 function getTrayIcon(status) {
+  const key = status === 'connected' || status === 'kill-switch' ? status : 'disconnected'
+  if (_trayIcons[key]) return _trayIcons[key]
   try {
-    if (status === 'connected') {
-      if (!_iconConnected) _iconConnected = nativeImage.createFromBuffer(makeTrayIconPng(52, 208, 88))
-      return _iconConnected
-    }
-    if (!_iconDisconnected) _iconDisconnected = nativeImage.createFromBuffer(makeTrayIconPng(100, 120, 110))
-    return _iconDisconnected
+    const img = nativeImage.createFromBuffer(makeLogoPng(16, key), { scaleFactor: 1 })
+    img.addRepresentation({ scaleFactor: 2, buffer: makeLogoPng(32, key) })
+    _trayIcons[key] = img
   } catch {
-    return nativeImage.createEmpty()
+    _trayIcons[key] = nativeImage.createEmpty()
   }
+  return _trayIcons[key]
 }
 
 // ─── Window ──────────────────────────────────────────────────────────────────
 
+// Тема: 'dark' | 'light' | 'system'. Системную отслеживает nativeTheme.
+function effectiveTheme() {
+  return nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+}
+
+function applyTheme(theme) {
+  nativeTheme.themeSource = windowState.normalizeTheme(theme)
+}
+
+function themeState() {
+  return { theme: windowState.normalizeTheme(settingsManager.get('theme')), effective: effectiveTheme() }
+}
+
+function sendToWindow(channel, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, data)
+}
+
 function createWindow() {
+  const workAreas = screen.getAllDisplays().map(d => d.workArea)
+  const bounds = windowState.sanitizeBounds(settingsManager.get('windowBounds'), workAreas)
+
   mainWindow = new BrowserWindow({
-    width: 390,
-    height: 620,
-    minWidth: 390,
-    minHeight: 620,
-    maxWidth: 390,
-    maxHeight: 620,
+    width: bounds.width,
+    height: bounds.height,
+    ...(bounds.x !== undefined ? { x: bounds.x, y: bounds.y } : {}),
+    minWidth: windowState.MIN_SIZE.width,
+    minHeight: windowState.MIN_SIZE.height,
     frame: false,
     transparent: false,
-    backgroundColor: '#08080f',
-    resizable: false,
+    backgroundColor: windowState.themeBackground(effectiveTheme()),
+    resizable: true,
+    maximizable: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -191,14 +158,47 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
+    if (bounds.maximized) mainWindow.maximize()
     mainWindow.show()
     mainWindow.focus()
   })
 
   mainWindow.on('close', (e) => {
     e.preventDefault()
+    saveWindowBounds()
     mainWindow.hide()
   })
+
+  // Кнопка «Развернуть» в заголовке меняет иконку по состоянию окна.
+  mainWindow.on('maximize', () => { sendToWindow('win:maximized', true); scheduleSaveBounds() })
+  mainWindow.on('unmaximize', () => { sendToWindow('win:maximized', false); scheduleSaveBounds() })
+  mainWindow.on('resize', scheduleSaveBounds)
+  mainWindow.on('move', scheduleSaveBounds)
+
+  // Окно скрыто в трей или свёрнуто — renderer ставит анимации на паузу.
+  const sendVisibility = () => sendToWindow('win:visibility', mainWindow.isVisible() && !mainWindow.isMinimized())
+  mainWindow.on('show', sendVisibility)
+  mainWindow.on('hide', sendVisibility)
+  mainWindow.on('minimize', sendVisibility)
+  mainWindow.on('restore', sendVisibility)
+}
+
+// Размер и положение окна запоминаем с задержкой (resize/move сыплются пачками).
+let saveBoundsTimer = null
+function scheduleSaveBounds() {
+  clearTimeout(saveBoundsTimer)
+  saveBoundsTimer = setTimeout(saveWindowBounds, 600)
+}
+function saveWindowBounds() {
+  clearTimeout(saveBoundsTimer)
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return
+  try {
+    const next = windowState.boundsToSave(mainWindow.getNormalBounds(), mainWindow.isMaximized())
+    const prev = settingsManager.get('windowBounds')
+    if (JSON.stringify(prev) !== JSON.stringify(next)) settingsManager.set('windowBounds', next)
+  } catch (e) {
+    console.warn('[Window] Не удалось сохранить размер окна:', e.message)
+  }
 }
 
 function getIconPath() {
@@ -223,12 +223,19 @@ function createTray() {
   })
 }
 
+const TRAY_LABEL = {
+  connected: 'Подключено',
+  disconnected: 'Отключено',
+  'kill-switch': 'Kill Switch — интернет заблокирован',
+}
+
 function refreshTray(status) {
   if (!tray) return
+  const label = TRAY_LABEL[status] || TRAY_LABEL.disconnected
   tray.setImage(getTrayIcon(status))
-  tray.setToolTip(`Lipton VPN — ${status === 'connected' ? 'Подключено' : 'Отключено'}`)
+  tray.setToolTip(`Lipton VPN — ${label}`)
   const menu = Menu.buildFromTemplate([
-    { label: status === 'connected' ? '● Подключено' : '○ Отключено', enabled: false },
+    { label: `${status === 'connected' ? '●' : '○'} ${label}`, enabled: false },
     { type: 'separator' },
     { label: 'Открыть', click: () => { mainWindow.show(); mainWindow.focus() } },
     {
@@ -356,7 +363,33 @@ function setupIPC() {
   // App
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('app:minimize', () => mainWindow?.minimize())
-  ipcMain.handle('app:close', () => mainWindow?.hide())
+  ipcMain.handle('app:close', () => { saveWindowBounds(); mainWindow?.hide() }) // крестик — прячем в трей
+  ipcMain.handle('app:maximize', () => {
+    if (mainWindow && !mainWindow.isMaximized()) mainWindow.maximize()
+    return !!mainWindow?.isMaximized()
+  })
+  ipcMain.handle('app:unmaximize', () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize()
+    return !!mainWindow?.isMaximized()
+  })
+  ipcMain.handle('app:toggle-maximize', () => {
+    if (!mainWindow) return false
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+    return mainWindow.isMaximized()
+  })
+  ipcMain.handle('app:is-maximized', () => !!mainWindow?.isMaximized())
+  ipcMain.handle('win:is-visible', () => !!mainWindow && mainWindow.isVisible() && !mainWindow.isMinimized())
+
+  // Тема интерфейса: dark | light | system
+  ipcMain.handle('settings:get-theme', () => themeState())
+  ipcMain.handle('settings:set-theme', (_, theme) => {
+    const t = windowState.normalizeTheme(theme)
+    settingsManager.set('theme', t)
+    applyTheme(t) // nativeTheme 'updated' сам разошлёт новое состояние
+    console.log(`[Settings] Тема: ${t}`)
+    return themeState()
+  })
   ipcMain.handle('app:open-external', (_, url) => shell.openExternal(url))
   // Текст лицензии стороннего компонента, который лежит рядом с ним в resources.
   ipcMain.handle('app:license-text', (_, name) => {
@@ -1142,7 +1175,7 @@ function buildConnectOptions(settings) {
       mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected', serverId: null })
     },
     onKillSwitch: () => {
-      refreshTray('disconnected')
+      refreshTray('kill-switch')
       mainWindow?.webContents.send('vpn:status-update', { status: 'kill-switch', serverId: null })
     },
     onReconnecting: () => {
@@ -1269,6 +1302,14 @@ app.whenReady().then(async () => {
   } catch (e) {
     console.error('[Settings] Ошибка миграции:', e.message)
   }
+
+  // Тема до создания окна — чтобы фон окна сразу был нужного цвета.
+  applyTheme(settingsManager.get('theme'))
+  nativeTheme.on('updated', () => {
+    const st = themeState()
+    try { mainWindow?.setBackgroundColor(windowState.themeBackground(st.effective)) } catch {}
+    sendToWindow('theme:updated', st)
+  })
 
   createWindow()
   createTray()

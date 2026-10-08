@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
+const { DEFAULT_THEME } = require('./window-state')
 
 // В dev можно указать отдельную папку (LIPTON_DATA_DIR), чтобы dev-копия не
 // делила настройки/токены с установленной версией.
@@ -18,6 +19,11 @@ const DEFAULTS = {
   tunMode: true,
   // Скрытый запасной вариант: старое ядро xray (+tun2socks). Уберём через релиз.
   coreLegacy: false,
+  // Тема интерфейса: 'dark' | 'light' | 'system'. Новый ключ — версия схемы не меняется:
+  // у старых settings.json его просто нет, и берётся значение по умолчанию.
+  theme: DEFAULT_THEME,
+  // Размер и положение окна { x, y, width, height, maximized } или null — по центру.
+  windowBounds: null,
 }
 
 // Версия схемы настроек. 2 — новое ядро sing-box и TUN по умолчанию.

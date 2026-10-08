@@ -4,6 +4,31 @@ contextBridge.exposeInMainWorld('api', {
   // Window controls
   minimize: () => ipcRenderer.invoke('app:minimize'),
   close: () => ipcRenderer.invoke('app:close'),
+  maximize: () => ipcRenderer.invoke('app:maximize'),
+  unmaximize: () => ipcRenderer.invoke('app:unmaximize'),
+  toggleMaximize: () => ipcRenderer.invoke('app:toggle-maximize'),
+  isMaximized: () => ipcRenderer.invoke('app:is-maximized'),
+  onMaximizedChange: (cb) => {
+    const h = (_, v) => cb(!!v)
+    ipcRenderer.on('win:maximized', h)
+    return () => ipcRenderer.removeListener('win:maximized', h)
+  },
+  // Окно видно / скрыто в трей или свёрнуто — для паузы анимаций.
+  isWindowVisible: () => ipcRenderer.invoke('win:is-visible'),
+  onWindowVisibility: (cb) => {
+    const h = (_, v) => cb(!!v)
+    ipcRenderer.on('win:visibility', h)
+    return () => ipcRenderer.removeListener('win:visibility', h)
+  },
+
+  // Theme: { theme: 'dark'|'light'|'system', effective: 'dark'|'light' }
+  getTheme: () => ipcRenderer.invoke('settings:get-theme'),
+  setTheme: (theme) => ipcRenderer.invoke('settings:set-theme', theme),
+  onThemeUpdate: (cb) => {
+    const h = (_, data) => cb(data)
+    ipcRenderer.on('theme:updated', h)
+    return () => ipcRenderer.removeListener('theme:updated', h)
+  },
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
   openTelegram: (link) => ipcRenderer.invoke('app:open-telegram', link),
   openArticles: () => ipcRenderer.invoke('articles:open'),
