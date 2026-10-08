@@ -140,6 +140,7 @@ function sendVpnStatus(data) {
 let lastExposure = null
 let exposureTimer = null
 let exposureRunning = null
+let manualCheckRunning = null // ручная «Проверка соединения» — та же сессия, не пересекаемся
 
 function scheduleExposure(expected, delay) {
   clearTimeout(exposureTimer)
@@ -176,6 +177,7 @@ async function refreshExposure(expected) {
   // IP без VPN не меняется часто — не дёргаем сеть на каждое «отключено» (повторы автоподключения)
   if (status === 'disconnected' && lastExposure?.status === 'disconnected' && Date.now() - lastExposure.at < 60_000) return lastExposure
   exposureRunning = (async () => {
+    if (manualCheckRunning) await manualCheckRunning.catch(() => {})
     const result = status === 'connected' ? await runConnectionCheck() : await directCheck()
     // пока шла проверка, статус сменился — результат уже не про текущее состояние
     if (vpnManager.getStatus() !== status) return null
@@ -821,13 +823,17 @@ function setupIPC() {
   ipcMain.handle('vpn:check-connection', () => {
     if (!checkRunning) {
       const status = vpnManager.getStatus()
-      checkRunning = runConnectionCheck()
+      // фоновая проверка после подключения идёт той же сессией — дождёмся её,
+      // иначе одна сбросит соединения другой
+      checkRunning = Promise.resolve(exposureRunning).catch(() => {})
+        .then(() => runConnectionCheck())
         .then(r => {
           // ручная проверка обновляет и плитки главной
           if (status === 'connected' && vpnManager.getStatus() === 'connected' && r.items?.length) rememberExposure(r, status)
           return r
         })
-        .finally(() => { checkRunning = null })
+        .finally(() => { checkRunning = null; manualCheckRunning = null })
+      manualCheckRunning = checkRunning
     }
     return checkRunning
   })
