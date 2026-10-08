@@ -1,17 +1,17 @@
-import { Aurora, Capsule, Dot, Icon } from './ui'
+import { Aurora, Capsule, Dot, Icon, Flag } from './ui'
 import ConnectButton from './ConnectButton'
 import { connectionLabel, fmtClock } from '../lib/plan.mjs'
-import { cleanRemark, flagCode } from '../lib/servers.mjs'
+import { cleanRemark, flagCode, isAutoBalance } from '../lib/servers.mjs'
 import { useNow } from '../lib/time.js'
 
 // Карточка состояния на главной (макеты new-pc-home-on / new-pc-home-off):
-// режим и «Обход РФ», «Защищено / Не защищено», таймер сессии, кнопка
-// подключения и пилюля сервера. Внутри — своё яркое свечение.
-//
-// TODO(redesign): строка «IP … · виден провайдеру» — после D3 (connection-check
-// после подключения); connectedAt — из main (vpn:status-update), пока считаем сами.
+// режим и «Обход РФ», «Защищено / Не защищено», таймер сессии (начало — из main),
+// IP, который видят сайты («· виден провайдеру» без VPN), кнопка подключения
+// и пилюля сервера. Внутри — своё яркое свечение. Нет серверов (нет подписки,
+// пробный доступ закончился) — вместо «Подключить» кнопка cta («Оформить подписку»).
 
 function ServerFlag({ remark }) {
+  if (isAutoBalance(remark)) return <Flag auto size={22} />
   const code = flagCode(remark)
   if (!code) {
     return <span className="hero-flag hero-flag--none" aria-hidden="true"><Icon name="globe" size={14} /></span>
@@ -28,6 +28,8 @@ export default function Hero({
   server,
   serversCount = 0,
   error,
+  ip = '',
+  cta = null,
   onConnect,
   onServers,
 }) {
@@ -40,7 +42,16 @@ export default function Hero({
   let sub = null
   if (error) sub = <span className="hero-sub hero-sub--error" title={error}>{error}</span>
   else if (status === 'kill-switch') sub = <span className="hero-sub hero-sub--warn">Интернет заблокирован</span>
-  else if (!serversCount) sub = <span className="hero-sub">Нет серверов — оформите подписку</span>
+  else if (!serversCount && !on) sub = <span className="hero-sub">{cta?.hint || 'Нет серверов — оформите подписку'}</span>
+  else if (ip && on) {
+    sub = <span className="hero-ip num"><b>IP</b>{ip}</span>
+  } else if (ip && status === 'disconnected') {
+    sub = (
+      <span className="hero-ip hero-ip--open num">
+        <b>IP</b><span className="hero-ip-val">{ip}</span><span className="hero-ip-dot">·</span><span className="hero-ip-warn">виден провайдеру</span>
+      </span>
+    )
+  }
 
   return (
     <section className="hero ui-rise" aria-label="Состояние подключения" style={{ '--i': 0 }}>
@@ -68,9 +79,18 @@ export default function Hero({
         </div>
         <div className="hero-sub-row">{sub}</div>
 
-        <ConnectButton status={status} onConnect={onConnect} disabled={!serversCount && !on} />
+        {!serversCount && !on && cta ? (
+          <button type="button" className="connect-btn connect-btn--off" onClick={cta.onClick}>
+            <Icon name={cta.icon || 'crown'} size={18} />
+            <span>{cta.label}</span>
+          </button>
+        ) : (
+          <ConnectButton status={status} onConnect={onConnect} disabled={!serversCount && !on} />
+        )}
 
-        {server ? (
+        {!serversCount && !on && cta?.secondary ? (
+          <button type="button" className="hero-link" onClick={cta.secondary.onClick}>{cta.secondary.label}</button>
+        ) : server ? (
           <button type="button" className="hero-server" onClick={onServers} aria-label={`Сменить сервер: ${name}`}>
             <ServerFlag remark={server.remark} />
             <span className="hero-server-name">{name}</span>

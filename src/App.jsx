@@ -9,22 +9,29 @@ import SupportPanel from './components/SupportPanel'
 import BillingPanel from './components/BillingPanel'
 import HistoryPanel from './components/HistoryPanel'
 import ConnectionCheckPanel from './components/ConnectionCheckPanel'
+import BypassDomainsScreen from './components/BypassDomainsScreen'
+import LicensesScreen from './components/LicensesScreen'
 import HomePage from './pages/HomePage'
 import ServersPage from './pages/ServersPage'
 import NewsPage from './pages/NewsPage'
 import SettingsPage from './pages/SettingsPage'
 import { Aurora, Glass } from './components/ui'
 import { navReducer, initialNav, topScreen } from './lib/nav.mjs'
-import { planSummary, glowPalette } from './lib/plan.mjs'
+import { planSummary, glowPalette, bypassOffer, cheapestMonthly } from './lib/plan.mjs'
 import { flattenServers } from './lib/servers.mjs'
+import { exposureView } from './lib/stats.mjs'
+import { unreadKeys, markRead } from './lib/news.mjs'
 import { useTheme } from './lib/theme.js'
 import { useWindowMaximized, usePauseWhenHidden, useEscape } from './lib/window.js'
 import { useNow } from './lib/time.js'
+import { useVpnStats, useExposure } from './lib/vpnData.js'
 
 // Окно ПК (редизайн): заголовок 40 px, боковое меню 216 px, область контента.
 // Разделы — Главная / Серверы / Новости / Настройки; подэкраны (оплата,
-// поддержка, кабинет, история, проверка соединения) открываются поверх раздела
-// внутри области контента, закрываются «Назад» и Esc.
+// поддержка, кабинет, история, проверка соединения, домены, лицензии)
+// открываются поверх раздела внутри области контента, закрываются «Назад» и Esc.
+
+const NEWS_REFRESH_MS = 30 * 60 * 1000
 
 // Окно без содержимого (загрузка, вход, знакомство) — тот же заголовок и свечение.
 function Frame({ maximized, onToggleMaximize, children }) {
@@ -33,6 +40,16 @@ function Frame({ maximized, onToggleMaximize, children }) {
       <Aurora variant="page" palette="active" />
       <TitleBar maximized={maximized} onToggleMaximize={onToggleMaximize} />
       {children}
+    </div>
+  )
+}
+
+// Старые экраны настроек (домены, лицензии) рисуются внутри панели-подэкрана.
+// TODO(redesign): экраны new-scr-domains и лицензий в новом стиле — D4, часть 2.
+function LegacyScreen({ onClose, children }) {
+  return (
+    <div className="settings-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="settings-panel">{children}</div>
     </div>
   )
 }
@@ -56,6 +73,8 @@ export default function App() {
   const [subView, setSubView] = useState(null)
   const [config, setConfig] = useState(null)
   const [vpnPrefs, setVpnPrefs] = useState({ tunMode: true, bypassRu: true })
+  const [news, setNews] = useState({ items: null, error: '' })
+  const [newsRead, setNewsRead] = useState([])
 
   const [nav, dispatch] = useReducer(navReducer, initialNav)
   const { theme, setTheme } = useTheme()
@@ -90,7 +109,7 @@ export default function App() {
       setSubscriptions(subs || [])
       setVpnStatus(status?.status || 'disconnected')
       setActiveServerId(status?.serverId || null)
-      if (status?.connectedAt) setConnectedAt(status.connectedAt)
+      setConnectedAt(status?.connectedAt || null)
       setVersion(ver || '')
       setFirstLaunch(!!fl)
       setAuthed(!!auth?.authed)
@@ -98,19 +117,49 @@ export default function App() {
     })
   }, [])
 
-  // Тариф для карточки в меню: /me/subscription (название — по /config).
+  // Тарифы (/config публичный): цены в плитке «Тариф», «Обход глушилок» в Серверах.
+  useEffect(() => {
+    let alive = true
+    window.api.accountConfig?.()
+      .then(r => { if (alive && r?.success) setConfig(r.config || null) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [authed])
+
+  // Подписка аккаунта: /me/subscription (название тарифа — по /config).
   useEffect(() => {
     if (!authed) { setSubView(null); return undefined }
     let alive = true
     window.api.accountSubscriptionView?.()
       .then(r => { if (alive && r?.success) setSubView(r.view || null) })
       .catch(() => {})
-    window.api.accountConfig?.()
-      .then(r => { if (alive && r?.success) setConfig(r.config || null) })
-      .catch(() => {})
     const off = window.api.onAccountSubscription?.(view => setSubView(view || null))
     return () => { alive = false; off?.() }
   }, [authed])
+
+  // Новости: лента приложения + прочитанные (локально) — для бейджа в меню.
+  useEffect(() => {
+    let alive = true
+    const load = () => window.api.getNews?.()
+      .then(r => {
+        if (!alive) return
+        if (r?.success) setNews({ items: r.items || [], error: '' })
+        else setNews(n => ({ items: n.items || [], error: r?.error || 'Нет связи с сервером' }))
+      })
+      .catch(() => { if (alive) setNews(n => ({ items: n.items || [], error: 'Нет связи с сервером' })) })
+    load()
+    window.api.getNewsRead?.().then(ids => { if (alive) setNewsRead(Array.isArray(ids) ? ids : []) }).catch(() => {})
+    const id = setInterval(load, NEWS_REFRESH_MS)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+
+  const saveNewsRead = useCallback((keys) => {
+    setNewsRead(prev => {
+      const next = markRead(prev, keys)
+      window.api.setNewsRead?.(next)
+      return next
+    })
+  }, [])
 
   const handleLogin = useCallback(async () => {
     setAuthed(true)
@@ -139,7 +188,8 @@ export default function App() {
     const offVpn = window.api.onVpnStatus(data => {
       setVpnStatus(data.status)
       setActiveServerId(data.serverId || null)
-      if (data.connectedAt) setConnectedAt(data.connectedAt)
+      // начало сессии ведёт main: при смене сервера таймер не сбрасывается
+      if ('connectedAt' in data) setConnectedAt(data.connectedAt || null)
     })
     const offSub = window.api.onSubUpdate(subs => {
       setSubscriptions(subs || [])
@@ -158,8 +208,7 @@ export default function App() {
     return () => { offVpn?.(); offSub?.(); offUpd?.(); offExp?.(); offAddResult?.() }
   }, [addToast])
 
-  // Начало сессии для таймера. TODO(redesign): connectedAt из main (пакет D3);
-  // пока main его не присылает — отсчёт с момента, когда окно увидело «подключено».
+  // Запасной таймер: старый main (без connectedAt) — отсчёт с момента «подключено».
   useEffect(() => {
     if (vpnStatus === 'connected') setConnectedAt(t => t || Date.now())
     else if (vpnStatus !== 'reconnecting') setConnectedAt(null)
@@ -238,9 +287,20 @@ export default function App() {
     [subscriptions, subView, config, guestMode, now],
   )
   const palette = glowPalette(vpnStatus, plan)
+  const on = vpnStatus === 'connected' || vpnStatus === 'reconnecting'
 
-  const openBilling = useCallback(() => {
-    if (authed) open('billing')
+  // Данные плиток: статистика ядра (главная и серверы) и «что видят сайты».
+  const statsWanted = !top && (nav.page === 'home' || nav.page === 'servers')
+  const stats = useVpnStats(!loading && statsWanted)
+  const check = useExposure(vpnStatus)
+  const exposure = useMemo(() => exposureView(check, { on }), [check, on])
+  const offer = useMemo(() => bypassOffer(config), [config])
+  const cheapest = useMemo(() => cheapestMonthly(config), [config])
+
+  const unread = useMemo(() => unreadKeys(news.items || [], newsRead), [news.items, newsRead])
+
+  const openBilling = useCallback((params) => {
+    if (authed) open('billing', params)
     else setGuest(false) // гость: сначала вход в аккаунт
   }, [authed, open])
 
@@ -281,13 +341,15 @@ export default function App() {
   }
 
   const notices = []
-  if (vpnStatus === 'kill-switch') {
+  // Kill Switch на главной видно в карточке состояния — уведомление только в других разделах
+  if (vpnStatus === 'kill-switch' && !onHome) {
     notices.push({ id: 'kill-switch', tone: 'warn', icon: 'shieldOff', title: 'Kill Switch активен', sub: 'Интернет заблокирован — нажмите «Подключить»' })
   }
   if (expiryWarning) {
     notices.push({
       id: 'expiry', tone: 'warn', icon: 'clock', title: 'Подписка заканчивается',
       sub: `«${expiryWarning.subName}» — через ${expiryWarning.label}`,
+      action: authed ? { label: 'Продлить', onClick: () => { setExpiryWarning(null); openBilling() } } : undefined,
       onClose: () => setExpiryWarning(null),
     })
   }
@@ -308,6 +370,19 @@ export default function App() {
     onClose: () => removeToast(t.id),
   }))
 
+  const heroServer = activeServer || allServers[0] || null
+  let heroCta = null
+  if (!allServers.length) {
+    heroCta = authed
+      ? {
+          label: 'Оформить подписку', icon: 'crown', onClick: () => openBilling(),
+          hint: plan.kind === 'expired' ? 'Подписка закончилась' : 'Подключите защиту · до 5 устройств',
+          // промокод вводится на экране оплаты
+          secondary: { label: 'Ввести промокод', onClick: () => openBilling() },
+        }
+      : { label: 'Войти', icon: 'user', onClick: () => setGuest(false), hint: 'Пробный доступ закончился' }
+  }
+
   let pageEl
   if (nav.page === 'servers') {
     pageEl = (
@@ -317,46 +392,75 @@ export default function App() {
         activeServer={activeServer}
         vpnStatus={vpnStatus}
         pinging={pinging}
+        plan={plan}
+        offer={offer}
+        stats={stats}
+        exposure={exposure}
         onSelect={handleSelectServer}
         onPingAll={handlePingAll}
-        onEmpty={openBilling}
+        onBuyBypass={authed ? () => openBilling({ prefer: 'bypass' }) : null}
+        onEmpty={() => openBilling()}
         emptyLabel={authed ? 'Оформить подписку' : 'Войти'}
       />
     )
   } else if (nav.page === 'news') {
-    pageEl = <NewsPage onClose={() => go('home')} />
+    pageEl = (
+      <NewsPage
+        items={news.items}
+        error={news.error}
+        unread={unread}
+        servers={allServers}
+        onRead={saveNewsRead}
+        onReadAll={() => saveNewsRead(unread)}
+      />
+    )
   } else if (nav.page === 'settings') {
     pageEl = (
       <SettingsPage
         authed={!!authed}
+        plan={plan}
+        view={subView}
         theme={theme}
         onTheme={setTheme}
         onOpen={open}
         onLogin={() => setGuest(false)}
         onLogout={handleLogout}
+        onToast={addToast}
         vpnStatus={vpnStatus}
+        version={version}
+        sheet={top?.screen || null}
       />
     )
   } else {
     pageEl = (
       <HomePage
-        authed={!!authed}
-        banners={[] /* TODO(redesign): баннеры из админки — следующая волна */}
-        subscriptions={subscriptions}
-        onRefreshSub={() => window.api.accountSync()}
-        onBuy={authed ? () => open('billing') : null}
-        onOpen={open}
+        banners={[] /* TODO(redesign): баннеры и экраны из админки с таргетингом по версии — следующая волна */}
         hero={{
           status: vpnStatus,
           palette,
           connectedAt,
           tunMode: vpnPrefs.tunMode,
           bypassRu: vpnPrefs.bypassRu,
-          server: activeServer || allServers[0] || null,
+          server: heroServer,
           serversCount: allServers.length,
           error: connectError,
+          ip: exposure.ip,
+          cta: heroCta,
           onConnect: handleConnect,
           onServers: () => go('servers'),
+        }}
+        bento={{
+          on,
+          status: vpnStatus,
+          stats,
+          exposure,
+          server: heroServer,
+          plan,
+          cheapest,
+          onCheck: () => open('check'),
+          onRenew: () => openBilling(),
+          onChangeTariff: () => openBilling({ mode: 'change' }),
+          onLogin: () => setGuest(false),
         }}
       />
     )
@@ -365,10 +469,18 @@ export default function App() {
   let screenEl = null
   if (top) {
     switch (top.screen) {
-      case 'billing': screenEl = <BillingPanel onClose={back} />; break
+      case 'billing':
+        screenEl = <BillingPanel onClose={back} initialMode={top.params?.mode || 'buy'} prefer={top.params?.prefer || null} />
+        break
       case 'support': screenEl = <SupportPanel onClose={back} />; break
       case 'history': screenEl = <HistoryPanel onClose={back} />; break
       case 'check': screenEl = <ConnectionCheckPanel onClose={back} />; break
+      case 'domains':
+        screenEl = <LegacyScreen onClose={back}><BypassDomainsScreen onBack={back} /></LegacyScreen>
+        break
+      case 'licenses':
+        screenEl = <LegacyScreen onClose={back}><LicensesScreen onBack={back} /></LegacyScreen>
+        break
       case 'account':
         screenEl = (
           <AccountPanel
@@ -393,14 +505,14 @@ export default function App() {
         <Sidebar
           page={nav.page}
           onNavigate={go}
-          badges={{} /* TODO(redesign): непрочитанные новости — D4 */}
+          badges={{ news: unread.length }}
           plan={plan}
           version={version}
-          onRenew={openBilling}
+          onRenew={() => openBilling()}
           onLogin={() => setGuest(false)}
         />
         <main className="content">
-          <div className="page" key={nav.page} inert={top ? '' : undefined}>
+          <div className={`page page--${nav.page}`} key={nav.page} inert={top ? '' : undefined}>
             {pageEl}
           </div>
           {screenEl && (

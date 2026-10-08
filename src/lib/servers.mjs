@@ -27,3 +27,66 @@ export function flattenServers(subscriptions) {
     (sub?.servers || []).map(s => ({ ...s, subId: sub.id, isTrial: sub.isTrial })),
   )
 }
+
+// «Авто-баланс» — сервер подписки, который сам выбирает быстрый узел (по названию).
+export function isAutoBalance(remark) {
+  return /авто|auto|баланс|balanc/i.test(String(remark || ''))
+}
+
+// Серверы тарифа «Обход глушилок» (с маскировкой трафика) — по названию.
+export function isBypassServer(remark) {
+  return /обход|bypass|глуш/i.test(String(remark || ''))
+}
+
+// «🇩🇪 Германия · Франкфурт» → { title: 'Германия', sub: 'Франкфурт' }.
+export function splitRemark(remark) {
+  const r = cleanRemark(remark)
+  const parts = r.split(/\s+[·|—–-]\s+/).map(s => s.trim()).filter(Boolean)
+  if (parts.length < 2) return { title: r, sub: '' }
+  return { title: parts[0], sub: parts.slice(1).join(' · ') }
+}
+
+// Подпись по пингу: «низкий пинг» / «стабильный» / «высокий пинг».
+export function pingTag(ms) {
+  if (ms == null) return { label: 'пинг не измерен', tone: 'muted' }
+  if (ms < 60) return { label: 'низкий пинг', tone: 'ok' }
+  if (ms < 150) return { label: 'стабильный', tone: 'info' }
+  return { label: 'высокий пинг', tone: 'warn' }
+}
+
+// Сколько «палочек сигнала» из 4 закрасить.
+export function signalLevel(ms) {
+  if (ms == null) return 0
+  if (ms < 80) return 4
+  if (ms < 150) return 3
+  if (ms < 300) return 2
+  return 1
+}
+
+// Цвет пинга: хороший / средний / плохой / нет данных.
+export function pingTone(ms) {
+  if (ms == null) return 'none'
+  if (ms < 150) return 'ok'
+  if (ms < 300) return 'warn'
+  return 'bad'
+}
+
+// Цветной акцент строки списка: по кругу изумруд → бирюза → синий,
+// высокий пинг — рыжий, серверы «Обхода» — фиолетовый.
+const ACCENTS = ['emerald', 'cyan', 'blue']
+export function serverAccent(index, ms, bypass = false) {
+  if (bypass) return 'violet'
+  if (ms != null && ms >= 150) return 'orange'
+  return ACCENTS[Math.abs(index) % ACCENTS.length]
+}
+
+// Раскладка страницы «Серверы»: Авто-баланс отдельно, остальные — группами.
+// bypassPlan — у пользователя тариф «Обход глушилок»: его серверы — первой группой.
+export function groupServers(servers, { bypassPlan = false } = {}) {
+  const list = Array.isArray(servers) ? servers : []
+  const auto = list.find(s => isAutoBalance(s.remark)) || null
+  const rest = list.filter(s => s !== auto)
+  const bypass = bypassPlan ? rest.filter(s => isBypassServer(s.remark)) : []
+  const regular = rest.filter(s => !bypass.includes(s))
+  return { auto, bypass, regular }
+}

@@ -77,7 +77,10 @@ function fireConfetti() {
   setTimeout(() => box.remove(), 3600)
 }
 
-export default function BillingPanel({ onClose }) {
+// initialMode: 'change' — сразу «Сменить тариф» (если подписка активна);
+// prefer: 'bypass' — предвыбрать «Обход глушилок» (баннер на экране «Серверы»):
+// при активной подписке — вариант смены тарифа, без подписки — покупку тарифа.
+export default function BillingPanel({ onClose, initialMode = 'buy', prefer = null }) {
   const [closing, setClosing] = useState(false)
   const [tariff, setTariff] = useState(null)
   const [periods, setPeriods] = useState([])
@@ -105,6 +108,9 @@ export default function BillingPanel({ onClose }) {
   const [changed, setChanged] = useState(null)    // { option, new_period_end } — для экрана успеха
   const idemKey = useRef(null)
   const previewSeq = useRef(0)
+  const preferDone = useRef(false)
+  const wantsBypass = prefer === 'bypass'
+  const isBypassTitle = (t) => /обход/i.test(String(t || ''))
 
   const canChange = view?.status === 'active' || view?.status === 'grace'
 
@@ -127,12 +133,16 @@ export default function BillingPanel({ onClose }) {
       // при активной подписке продлеваем её текущий тариф (другой — только через смену);
       // при истёкшей/неактивной — основной (первый), как раньше
       const active = v?.status === 'active' || v?.status === 'grace'
-      const t = (active && v?.tariff_code && r.config.tariffs.find(x => x.code === v.tariff_code)) || r.config.tariffs[0]
+      const preferred = wantsBypass && !active
+        ? r.config.tariffs.find(x => isBypassTitle(x.title) || /bypass|obhod/i.test(String(x.code || '')))
+        : null
+      const t = (active && v?.tariff_code && r.config.tariffs.find(x => x.code === v.tariff_code)) || preferred || r.config.tariffs[0]
       const ps = [...(t.periods || [])].sort((a, b) => a.days - b.days)
       setTariff(t)
       setPeriods(ps)
-      // по умолчанию — самый выгодный (максимальный период)
-      setSel(ps.length ? ps[ps.length - 1].id : null)
+      // по умолчанию — самый выгодный (максимальный период); «Обход» — самый короткий
+      setSel(ps.length ? (preferred ? ps[0].id : ps[ps.length - 1].id) : null)
+      if (active && (initialMode === 'change' || wantsBypass)) setMode('change')
     }).catch(() => setErr('Не удалось загрузить тарифы'))
   }, [])
 
@@ -229,6 +239,15 @@ export default function BillingPanel({ onClose }) {
       if (o) pickOption(o)
     }
   }
+
+  // «Обход глушилок» с экрана «Серверы»: когда варианты смены загрузились —
+  // один раз выбираем подходящий (предпросмотр, как при ручном выборе).
+  useEffect(() => {
+    if (!wantsBypass || preferDone.current || mode !== 'change' || !chg?.available) return
+    const o = (chg.options || []).find(x => isBypassTitle(x.tariff_title))
+    preferDone.current = true
+    if (o) pickOption(o)
+  }, [chg, mode])
 
   // Опрос статуса платежа: пока оплата открыта в браузере — каждые 3с спрашиваем
   // сервер (он сам дёргает ЮKassa). Успех → конфети; отказ → ошибка + «оплатить снова».

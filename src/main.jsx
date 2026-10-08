@@ -8,6 +8,7 @@ import './styles/base.css'
 import './styles/ui.css'
 import './styles/shell.css'
 import './styles/home.css'
+import './styles/pages.css'
 import './styles/app.css'
 import 'flag-icons/css/flag-icons.min.css'
 

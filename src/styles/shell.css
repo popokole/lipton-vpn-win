@@ -209,6 +209,12 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: var(--content-pad);
+  /* Место под полосу прокрутки (8 px) всегда занято, а справа отступ меньше
+     на её ширину: раскладка одинакова с прокруткой и без, край — как в макете. */
+  padding-right: calc(var(--content-pad) - 8px);
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: auto;
   display: flex;
   flex-direction: column;
   animation: pageIn 0.36s var(--ease-out) both;
@@ -251,7 +257,7 @@
 .home-grid {
   display: grid;
   /* hero 288 px при окне 960 (как в макете), растёт с окном до 440 px */
-  grid-template-columns: clamp(272px, 30vw, 440px) minmax(0, 1fr);
+  grid-template-columns: clamp(256px, 30vw, 440px) minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
 }
@@ -339,4 +345,9 @@
   margin: auto 0;
   border-radius: var(--r-panel);
   overflow: hidden;
+}
+
+/* Окно у минимальной ширины (880 px): отступы контента чуть меньше */
+@media (max-width: 940px) {
+  :root { --content-pad: 18px; }
 }

@@ -69,7 +69,11 @@ export default function Sidebar({ page, onNavigate, badges = {}, plan, version, 
           >
             <Icon name={item.icon} size={20} />
             <span>{item.label}</span>
-            {badges[item.page] > 0 && <span className="ui-badge" aria-label={`Непрочитанных: ${badges[item.page]}`}>{badges[item.page]}</span>}
+            {badges[item.page] > 0 && (
+              <span className="ui-badge" aria-label={`Непрочитанных: ${badges[item.page]}`}>
+                {badges[item.page] > 9 ? '9+' : badges[item.page]}
+              </span>
+            )}
           </button>
         ))}
       </nav>

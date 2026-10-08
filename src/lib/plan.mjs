@@ -90,6 +90,7 @@ export function planSummary({ subscriptions = [], view = null, config = null, gu
       kind: 'guest', title: 'Пробный доступ', statusLabel: STATUS_LABEL.guest,
       daysLeft: 0, until, untilLabel: '', msLeft, totalMs: total,
       progress: total ? Math.max(0, Math.min(1, msLeft / total)) : 0, bypass: false,
+      code: null, periodDays: 0, priceKopeks: null, canceled: false,
     }
   }
 
@@ -121,6 +122,11 @@ export function planSummary({ subscriptions = [], view = null, config = null, gu
     totalMs: periodDays * DAY,
     progress: kind === 'active' || kind === 'trial' ? Math.max(0, Math.min(1, daysLeft / periodDays)) : 0,
     bypass: (kind === 'active' || kind === 'trial') && isBypassTariff(title, code),
+    code,
+    periodDays,
+    // цена текущего срока из /config (купленный срок сервер не отдаёт — берём подходящий)
+    priceKopeks: tariffInfo(config, code, periodDays).priceKopeks,
+    canceled: !!view?.canceled,
   }
 }
 
@@ -145,4 +151,53 @@ export const CONNECTION_LABEL = {
 
 export function connectionLabel(status) {
   return CONNECTION_LABEL[status] || CONNECTION_LABEL.disconnected
+}
+
+// Рубли из копеек: 15900 → «159 ₽», 19950 → «199,5 ₽».
+export function rub(kopeks) {
+  const v = (Number(kopeks) || 0) / 100
+  return `${v.toLocaleString('ru-RU', { maximumFractionDigits: v % 1 ? 2 : 0 })} ₽`
+}
+
+// Тариф подписки и цена текущего срока: { tariff, periodDays, priceKopeks }.
+export function tariffInfo(config, code, periodDays) {
+  const tariffs = (config && Array.isArray(config.tariffs)) ? config.tariffs : []
+  const tariff = code ? tariffs.find(t => t && t.code === code) || null : null
+  const periods = Array.isArray(tariff?.periods) ? tariff.periods : []
+  const period = periods.find(p => Number(p?.days) === Number(periodDays)) || null
+  const priceKopeks = period?.price_kopeks ?? (Number(tariff?.period_days) === Number(periodDays) ? tariff?.price_kopeks : null) ?? null
+  return { tariff, periodDays, priceKopeks: priceKopeks == null ? null : Number(priceKopeks) }
+}
+
+// Предложение «Обход глушилок» для баннера в Серверах: самый короткий срок тарифа.
+// → { code, title, days, priceKopeks } или null, если такого тарифа нет.
+export function bypassOffer(config) {
+  const tariffs = (config && Array.isArray(config.tariffs)) ? config.tariffs : []
+  const t = tariffs.find(x => x && isBypassTariff(x.title, x.code))
+  if (!t) return null
+  const periods = (Array.isArray(t.periods) ? t.periods : []).filter(p => Number(p?.days) > 0)
+    .sort((a, b) => a.days - b.days)
+  const p = periods[0]
+  const days = p ? Number(p.days) : Number(t.period_days) || 30
+  const priceKopeks = p ? Number(p.price_kopeks) : Number(t.price_kopeks) || null
+  return { code: t.code, title: t.title || 'Обход глушилок', days, priceKopeks }
+}
+
+// Самая дешёвая месячная подписка (для «от 159 ₽/мес»): срок 28–31 день;
+// если месячных сроков нет — самый дешёвый срок в пересчёте на 30 дней.
+export function cheapestMonthly(config) {
+  const tariffs = (config && Array.isArray(config.tariffs)) ? config.tariffs : []
+  let month = null
+  let perMonth = null
+  for (const t of tariffs) {
+    for (const p of (Array.isArray(t?.periods) ? t.periods : [])) {
+      const d = Number(p?.days)
+      const k = Number(p?.price_kopeks)
+      if (!(d > 0 && k > 0)) continue
+      if (d >= 28 && d <= 31 && (month == null || k < month)) month = k
+      const m = Math.round((k / d) * 30 / 100) * 100
+      if (perMonth == null || m < perMonth) perMonth = m
+    }
+  }
+  return month ?? perMonth
 }

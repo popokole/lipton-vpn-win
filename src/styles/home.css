@@ -1,4 +1,5 @@
-/* Экраны окна ПК: главная (hero), серверы, настройки, слот баннера.
+/* Главная окна ПК: карточка состояния (hero), слот баннера, пустые состояния.
+   Плитки бенто, серверы, новости и настройки — в pages.css.
    Размеры и цвета — из макетов new-pc-home-on/off, new-pc-servers, new-pc-settings,
    new-demo-theme (светлая тема). */
 
@@ -279,61 +280,6 @@
   color: var(--c-text-2);
 }
 
-/* Подписка (прежняя карточка) и быстрые действия */
-.home-subs { flex: 1 1 auto; min-height: 0; }
-.home-subs .legacy-subs { margin-top: 10px; }
-.home-quick {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.quick-tile {
-  width: 100%;
-  min-height: 64px;
-  padding: 14px 12px 14px 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  color: var(--c-text);
-  transition: transform var(--dur-fast) var(--ease), background var(--dur) var(--ease);
-}
-.quick-tile:hover { background: linear-gradient(180deg, var(--glass-hi) 0px, transparent 56px), var(--c-fill-2); }
-.quick-tile:active { transform: scale(0.99); }
-.quick-tile-ico {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--c-fill-1);
-  border: 1px solid var(--c-line-2);
-  color: var(--st-accent);
-}
-.quick-tile-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.quick-tile-title { font-size: 13px; font-weight: 700; line-height: 18px; }
-.quick-tile-sub {
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  color: var(--c-text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.quick-tile-chev { color: var(--c-text-3); }
-
-/* ─── Серверы ────────────────────────────────────────────────────────────── */
-.servers-card { padding: 16px; }
-.servers-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
 /* Пустое состояние */
 .empty-card {
   padding: 32px 24px;
@@ -358,51 +304,8 @@
 .empty-card-title { font-size: 16px; font-weight: 700; line-height: 22px; }
 .empty-card-text { font-size: 13px; font-weight: 500; line-height: 18px; color: var(--c-text-2); margin-bottom: 8px; }
 
-/* ─── Настройки ──────────────────────────────────────────────────────────── */
-.set-overline { padding: 0 16px; margin-top: 4px; }
-.col > .set-overline:first-child { margin-top: 0; }
-.set-card { padding: 0; overflow: hidden; }
-.set-row {
-  width: 100%;
-  min-height: 60px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-align: left;
-  color: var(--c-text);
-}
-.set-row + .set-row { border-top: 1px solid var(--c-line); }
-.set-row--link { transition: background var(--dur-fast) var(--ease); }
-.set-row--link:hover { background: var(--c-hover); }
-.set-row--stack { flex-direction: column; align-items: stretch; gap: 12px; }
-.set-row-line { display: flex; align-items: center; gap: 12px; }
-.set-ico {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--c-fill-1);
-  border: 1px solid var(--c-line-2);
-  color: var(--c-accent-icon);
-}
-.set-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.set-row-title { font-size: 14px; font-weight: 600; line-height: 20px; }
-.set-row-sub {
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  color: var(--c-text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.set-row-chev { color: var(--c-text-3); }
-
 /* Спиннер покрупнее (загрузка окна) и помельче (в кнопке) */
 .ui-spinner--lg { width: 30px; height: 30px; border-width: 2.5px; }
 .ui-spinner--sm { width: 14px; height: 14px; }
+.ui-spinner--xs { width: 10px; height: 10px; border-width: 1.5px; }
 

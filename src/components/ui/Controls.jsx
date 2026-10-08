@@ -1,3 +1,5 @@
+import { forwardRef } from 'react'
+
 // Мелкие элементы дизайн-системы: капсула, тумблер, сегменты, кнопки, прогресс.
 
 export function Capsule({ icon, tone, as: Tag = 'span', className = '', children, ...rest }) {
@@ -47,17 +49,20 @@ export function Segmented({ options, value, onChange, label, tall = false, class
   )
 }
 
-// Кнопка: variant primary | glass | ghost | danger; size sm | md | lg.
-export function Button({ variant = 'glass', size, block = false, icon, className = '', children, type = 'button', ...rest }) {
+// Кнопка: variant primary | glass | ghost | danger | danger-solid | warn; size sm | md | lg.
+export const Button = forwardRef(function Button(
+  { variant = 'glass', size, block = false, icon, className = '', children, type = 'button', ...rest },
+  ref,
+) {
   const cls = ['ui-btn', `ui-btn--${variant}`, size ? `ui-btn--${size}` : '', block ? 'ui-btn--block' : '', className]
     .filter(Boolean).join(' ')
   return (
-    <button type={type} className={cls} {...rest}>
+    <button ref={ref} type={type} className={cls} {...rest}>
       {icon}
       {children != null && <span>{children}</span>}
     </button>
   )
-}
+})
 
 export function Progress({ value = 0, thick = false, label, className = '' }) {
   const pct = Math.max(0, Math.min(100, Math.round(value * 100)))
