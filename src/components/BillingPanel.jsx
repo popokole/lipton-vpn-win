@@ -111,6 +111,12 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
   const preferDone = useRef(false)
   const wantsBypass = prefer === 'bypass'
   const isBypassTitle = (t) => /обход/i.test(String(t || ''))
+  const promoUsed = useRef('')
+
+  // Промокод, проверенный на экране «Промокод», подставляем сами.
+  useEffect(() => {
+    window.api.promoPending?.().then(p => { if (p?.code) setPromo(cur => cur || p.code) }).catch(() => {})
+  }, [])
 
   const canChange = view?.status === 'active' || view?.status === 'grace'
 
@@ -160,6 +166,7 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
   const buy = async () => {
     if (!sel || busy) return
     setBusy(true); setErr('')
+    promoUsed.current = promo.trim()
     const r = await window.api.paymentCheckout({
       tariffCode: tariff?.code, periodId: sel, promoCode: promo.trim() || undefined,
     })
@@ -225,6 +232,8 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
     setPaid(true); setOk(true); setPayErr('')
     fireConfetti()
     window.api.accountSync() // подтянуть новую подписку в фоне
+    // промокод потрачен этой оплатой — больше не подставляем
+    if (promoUsed.current) window.api.promoClear?.()
   }
 
   const retry = () => {

@@ -6,7 +6,8 @@ const THEMES = ['dark', 'light', 'system']
 const DEFAULT_THEME = 'system'
 
 const DEFAULT_SIZE = { width: 960, height: 620 }
-const MIN_SIZE = { width: 880, height: 580 }
+// Уже 760 px окно переходит в компактный вид с нижними вкладками.
+const MIN_SIZE = { width: 420, height: 580 }
 
 // Фон окна до загрузки страницы — под тему, чтобы при старте не мигало.
 const THEME_BG = { dark: '#050807', light: '#F3F1EC' }

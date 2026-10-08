@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
   openTelegram: (link) => ipcRenderer.invoke('app:open-telegram', link),
-  openArticles: () => ipcRenderer.invoke('articles:open'),
+  openArticles: (slug) => ipcRenderer.invoke('articles:open', slug),
   getVersion: () => ipcRenderer.invoke('app:version'),
   getLicenseText: (name) => ipcRenderer.invoke('app:license-text', name),
 
@@ -46,6 +46,38 @@ contextBridge.exposeInMainWorld('api', {
   authLogout: () => ipcRenderer.invoke('auth:logout'),
   accountSync: () => ipcRenderer.invoke('account:sync'),
   trialTestAccess: () => ipcRenderer.invoke('trial:test-access'),
+  // Гостевой доступ «15 минут без регистрации» (раз в день) и состояние гостя
+  guestState: () => ipcRenderer.invoke('guest:state'),
+  guestStart: () => ipcRenderer.invoke('guest:start'),
+  guestLeave: () => ipcRenderer.invoke('guest:leave'),
+  onGuestUpdate: (cb) => {
+    const h = (_, data) => cb(data)
+    ipcRenderer.on('guest:updated', h)
+    return () => ipcRenderer.removeListener('guest:updated', h)
+  },
+  // «15 минут бесплатно» для вошедших без подписки
+  dailyTrial: () => ipcRenderer.invoke('trial:daily'),
+  dailyTrialState: () => ipcRenderer.invoke('trial:daily-state'),
+  // Баннеры и экраны из админки
+  getBanners: () => ipcRenderer.invoke('banners:get'),
+  dismissBanner: (id) => ipcRenderer.invoke('banners:dismiss', id),
+  // Уведомления аккаунта (напоминания об оплате, новости, Telegram)
+  accountNotifications: () => ipcRenderer.invoke('account:notifications'),
+  accountSetNotifications: (prefs) => ipcRenderer.invoke('account:set-notifications', prefs),
+  // Смена почты: код на новый адрес → подтверждение
+  accountEmailRequest: (email) => ipcRenderer.invoke('account:email-request', email),
+  accountEmailChange: (email, code) => ipcRenderer.invoke('account:email-change', { email, code }),
+  // Промокод: проверить и запомнить до следующей оплаты
+  promoValidate: (code) => ipcRenderer.invoke('promo:validate', code),
+  promoPending: () => ipcRenderer.invoke('promo:pending'),
+  promoClear: () => ipcRenderer.invoke('promo:clear'),
+  // Оценка ответа ИИ и оператор
+  aiFeedback: (messageId, helpful) => ipcRenderer.invoke('ai:feedback', { messageId, helpful }),
+  aiOperator: (dialogId) => ipcRenderer.invoke('ai:operator', dialogId),
+  // База знаний
+  contentArticles: (category) => ipcRenderer.invoke('content:articles', category),
+  contentArticle: (slug) => ipcRenderer.invoke('content:article', slug),
+  contentFaq: () => ipcRenderer.invoke('content:faq'),
   paymentCheckout: (opts) => ipcRenderer.invoke('payment:checkout', opts),
   paymentStatus: (txId) => ipcRenderer.invoke('payment:status', txId),
   accountSubscriptionView: () => ipcRenderer.invoke('account:subscription-view'),
@@ -135,6 +167,7 @@ contextBridge.exposeInMainWorld('api', {
   openLogFile:          ()       => ipcRenderer.invoke('settings:open-log-file'),
   resetProfile:         ()       => ipcRenderer.invoke('settings:reset-profile'),
   getBypassDomains:     ()       => ipcRenderer.invoke('settings:get-bypass-domains'),
+  getBypassDomainsMeta: ()       => ipcRenderer.invoke('settings:get-bypass-domains-meta'),
   addBypassDomain:      (domain) => ipcRenderer.invoke('settings:add-bypass-domain', domain),
   removeBypassDomain:   (domain) => ipcRenderer.invoke('settings:remove-bypass-domain', domain),
   getKillSwitch:        ()       => ipcRenderer.invoke('settings:get-kill-switch'),

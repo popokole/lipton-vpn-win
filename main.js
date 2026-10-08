@@ -14,6 +14,8 @@ const connectionCheck = require('./electron/connection-check')
 const windowState = require('./electron/window-state')
 const { makeLogoPng } = require('./electron/tray-icon')
 const { createStats } = require('./electron/vpn-stats')
+const guestTrial = require('./electron/guest-trial')
+const bypassDomains = require('./electron/bypass-domains')
 const { setupAutoUpdater } = require('./electron/auto-updater')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
@@ -425,10 +427,11 @@ async function syncSubscription() {
   }
 
   const settings = settingsManager.getAll()
-  // Убираем и managed, и тестовый триал: после входа в аккаунт бесплатный
-  // тест-доступ больше не нужен (иначе он «висит» рядом с реальной подпиской).
-  const others = (settings.subscriptions || []).filter(s => !s.managed && !s.isTrial)
   const url = view?.subscription_url
+  // Убираем и managed, и гостевой пробный доступ: после входа в аккаунт он больше
+  // не нужен (иначе «висит» рядом с реальной подпиской). «15 минут бесплатно»
+  // вошедшего оставляем, пока у аккаунта нет своей ссылки.
+  const others = guestTrial.keepOnSync(settings.subscriptions, !!url)
 
   if (!url) {
     settingsManager.set('subscriptions', others)
@@ -515,9 +518,14 @@ function setupIPC() {
   // а не во внешнем браузере. Блог отдаёт X-Frame-Options, поэтому не iframe, а
   // полноценное дочернее окно в бренд-стиле.
   let articlesWin = null
-  ipcMain.handle('articles:open', () => {
-    if (articlesWin && !articlesWin.isDestroyed()) { articlesWin.focus(); return }
+  ipcMain.handle('articles:open', (_, slug) => {
     const base = process.env.LIPTON_API_BASE || 'https://liptonone.online'
+    const page = base + '/blog' + (typeof slug === 'string' && /^[a-z0-9-]{1,120}$/i.test(slug) ? '/' + slug : '')
+    if (articlesWin && !articlesWin.isDestroyed()) {
+      if (slug) articlesWin.loadURL(page)
+      articlesWin.focus()
+      return
+    }
     articlesWin = new BrowserWindow({
       width: 1040, height: 760, minWidth: 720, minHeight: 520,
       title: 'Lipton VPN — Статьи и гайды',
@@ -525,7 +533,7 @@ function setupIPC() {
       parent: mainWindow || undefined,
       webPreferences: { contextIsolation: true, nodeIntegration: false },
     })
-    articlesWin.loadURL(base + '/blog')
+    articlesWin.loadURL(page)
     // Внешние ссылки (t.me и пр.) — в системный браузер, чтобы окно оставалось блогом.
     articlesWin.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' } })
     articlesWin.on('closed', () => { articlesWin = null })
@@ -735,23 +743,27 @@ function setupIPC() {
     return settingsManager.get('bypassDomains') || []
   })
 
+  // Даты добавления — рядом, в bypassDomainsAddedAt (сам список — строки, как раньше).
+  ipcMain.handle('settings:get-bypass-domains-meta', () => ({
+    items: bypassDomains.withDates(settingsManager.get('bypassDomains'), settingsManager.get('bypassDomainsAddedAt')),
+    limit: bypassDomains.MAX_DOMAINS,
+  }))
+
   ipcMain.handle('settings:add-bypass-domain', (_, domain) => {
-    const d = domain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
-    if (!d) return { success: false, error: 'Пустой домен' }
-    const domains = settingsManager.get('bypassDomains') || []
-    if (domains.includes(d)) return { success: false, error: 'Уже добавлен' }
-    const updated = [...domains, d]
-    settingsManager.set('bypassDomains', updated)
-    console.log(`[Bypass] Добавлен домен: ${d}`)
-    return { success: true, domains: updated }
+    const r = bypassDomains.addDomain(settingsManager.get('bypassDomains'), settingsManager.get('bypassDomainsAddedAt'), domain)
+    if (!r.success) return { success: false, error: r.error }
+    settingsManager.set('bypassDomains', r.domains)
+    settingsManager.set('bypassDomainsAddedAt', r.meta)
+    console.log(`[Bypass] Добавлен домен: ${r.domain}`)
+    return { success: true, domains: r.domains, items: bypassDomains.withDates(r.domains, r.meta) }
   })
 
   ipcMain.handle('settings:remove-bypass-domain', (_, domain) => {
-    const domains = settingsManager.get('bypassDomains') || []
-    const updated = domains.filter(d => d !== domain)
-    settingsManager.set('bypassDomains', updated)
+    const r = bypassDomains.removeDomain(settingsManager.get('bypassDomains'), settingsManager.get('bypassDomainsAddedAt'), domain)
+    settingsManager.set('bypassDomains', r.domains)
+    settingsManager.set('bypassDomainsAddedAt', r.meta)
     console.log(`[Bypass] Удалён домен: ${domain}`)
-    return { success: true, domains: updated }
+    return { success: true, domains: r.domains, items: bypassDomains.withDates(r.domains, r.meta) }
   })
 
   ipcMain.handle('settings:reset-profile', async () => {
@@ -861,6 +873,7 @@ function setupIPC() {
   ipcMain.handle('auth:email-verify', async (_, { email, code }) => {
     try {
       await apiClient.emailVerify(email, code)
+      endGuestSession()
       const sync = await syncSubscription()
       return { success: true, sync }
     } catch (e) { return { success: false, error: e.message } }
@@ -874,7 +887,7 @@ function setupIPC() {
   ipcMain.handle('auth:tg-poll', async (_, linkToken) => {
     try {
       const r = await apiClient.tgPoll(linkToken)
-      if (r.done) { const sync = await syncSubscription(); return { success: true, done: true, sync } }
+      if (r.done) { endGuestSession(); const sync = await syncSubscription(); return { success: true, done: true, sync } }
       return { success: true, done: false }
     } catch (e) { return { success: false, error: e.message } }
   })
@@ -882,6 +895,7 @@ function setupIPC() {
   ipcMain.handle('auth:tg-verify', async (_, { linkToken, code }) => {
     try {
       await apiClient.tgVerify(linkToken, code)
+      endGuestSession()
       const sync = await syncSubscription()
       return { success: true, sync }
     } catch (e) { return { success: false, error: e.message } }
@@ -890,6 +904,7 @@ function setupIPC() {
   ipcMain.handle('auth:device-exchange', async (_, code) => {
     try {
       await apiClient.deviceExchange(code)
+      endGuestSession()
       const sync = await syncSubscription()
       return { success: true, sync }
     } catch (e) { return { success: false, error: e.message } }
@@ -900,6 +915,7 @@ function setupIPC() {
     settingsManager.set('activeServerId', null)
     settingsManager.set('subscriptions', [])
     await apiClient.logout()
+    endGuestSession()
     refreshTray('disconnected')
     sendVpnStatus({ status: 'disconnected' })
     mainWindow?.webContents.send('sub:updated', [])
@@ -920,9 +936,16 @@ function setupIPC() {
     try { return { success: true, config: await apiClient.getConfig() } }
     catch (e) { return { success: false, error: e.message } }
   })
+  // Отвязка карты. После новой привязки сервер 24 ч отвечает 409
+  // card_unlink_cooldown с available_at — отдаём их окну.
   ipcMain.handle('account:delete-card', async () => {
     try { await apiClient.deleteCard(); return { success: true } }
-    catch (e) { return { success: false, error: e.message } }
+    catch (e) {
+      return {
+        success: false, error: e.message, httpStatus: e.status, code: e.code,
+        availableAt: e.data?.available_at || e.data?.error?.available_at || null,
+      }
+    }
   })
 
   // Устройства на подписке: список, отвязка одного и всех.
@@ -997,38 +1020,110 @@ function setupIPC() {
     return !!enabled
   })
 
-  // Тестовый доступ на 10 минут без аккаунта (с экрана входа) — чтобы можно
-  // было сразу попробовать VPN. По истечении триал-подписка истекает сама.
-  ipcMain.handle('trial:test-access', async () => {
+  // Пробный доступ без аккаунта — 15 минут раз в день (экран «15 минут без
+  // регистрации»). Прежний вызов тест-доступа ведёт туда же.
+  ipcMain.handle('trial:test-access', () => startGuestTrial())
+  ipcMain.handle('guest:state', () => guestState())
+  ipcMain.handle('guest:start', () => startGuestTrial())
+  ipcMain.handle('guest:leave', () => { endGuestSession(); return guestState() })
+
+  // «15 минут бесплатно» для вошедших без подписки (раз в день, решает сервер).
+  ipcMain.handle('trial:daily-state', () => ({ retryAt: Number(settingsManager.get('dailyTrialRetryAt')) || null }))
+  ipcMain.handle('trial:daily', () => startDailyTrial())
+
+  // Баннеры и экраны из админки (таргетинг по платформе, версии и аудитории).
+  // Закрытые пользователем id помним локально.
+  ipcMain.handle('banners:get', async () => {
+    const dismissed = (settingsManager.get('bannersDismissed') || []).map(String)
     try {
-      // Ссылка бесплатной подписки настраивается в админке (/config → free_sub_url),
-      // с фолбэком на встроенную TRIAL_URL.
-      let trialUrl = TRIAL_URL
-      try {
-        const cfg = await apiClient.getConfig()
-        if (cfg?.free_sub_url) trialUrl = cfg.free_sub_url
-      } catch {}
-      const { servers, userInfo } = await subscriptionManager.fetchAndParse(trialUrl)
-      const settings = settingsManager.getAll()
-      const others = (settings.subscriptions || []).filter(s => !s.isTrial)
-      const trialSub = {
-        id: 'test-' + Date.now(),
-        name: 'Тестовый доступ',
-        url: trialUrl,
-        isTrial: true,
-        addedAt: Date.now(),
-        expiresAt: Date.now() + TEST_ACCESS_DURATION,
-        lastUpdated: Date.now(),
-        servers,
-        userInfo,
-      }
-      const newSubs = [trialSub, ...others]
-      settingsManager.set('subscriptions', newSubs)
-      mainWindow?.webContents.send('sub:updated', newSubs)
-      return { success: true }
+      const r = await apiClient.getBanners(app.getVersion())
+      return { success: true, banners: Array.isArray(r?.banners) ? r.banners : [], dismissed }
     } catch (e) {
-      return { success: false, error: e.message }
+      return { success: false, error: e.message, httpStatus: e.status, banners: [], dismissed }
     }
+  })
+  ipcMain.handle('banners:dismiss', (_, id) => {
+    const key = String(id ?? '')
+    const list = (settingsManager.get('bannersDismissed') || []).map(String).filter(x => x && x !== key)
+    if (key) list.push(key)
+    const next = list.slice(-200)
+    settingsManager.set('bannersDismissed', next)
+    return next
+  })
+
+  // Уведомления аккаунта: напоминания об оплате, новости, сообщения в Telegram.
+  ipcMain.handle('account:notifications', async () => {
+    try { return { success: true, prefs: await apiClient.getNotifications() } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('account:set-notifications', async (_, prefs) => {
+    const p = prefs || {}
+    const body = { payment_reminders: !!p.payment_reminders, news: !!p.news, telegram_messages: !!p.telegram_messages }
+    try {
+      const r = await apiClient.setNotifications(body)
+      return { success: true, prefs: r && typeof r === 'object' && 'news' in r ? r : body }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+
+  // Смена (или привязка) почты: код на новый адрес → подтверждение.
+  ipcMain.handle('account:email-request', async (_, email) => {
+    try { await apiClient.emailChangeRequest(String(email || '').trim().toLowerCase()); return { success: true } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('account:email-change', async (_, { email, code } = {}) => {
+    try {
+      const r = await apiClient.emailChange(String(email || '').trim().toLowerCase(), String(code || '').trim())
+      // адрес был у другого аккаунта — сервер объединил их и выдал новые токены
+      const merged = !!r?.access_token
+      if (merged) syncSubscription().catch(() => {})
+      console.log(`[Account] Почта изменена${merged ? ' (аккаунты объединены)' : ''}`)
+      return { success: true, merged }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+
+  // Промокод: проверяем и запоминаем — применится при следующей оплате.
+  ipcMain.handle('promo:validate', async (_, code) => {
+    const c = String(code || '').trim()
+    if (!c) return { success: false, error: 'Введите промокод' }
+    try {
+      const r = await apiClient.promoValidate(c)
+      if (!r?.valid) return { success: true, valid: false, reason: r?.reason || 'Промокод не подходит' }
+      const promo = {
+        code: c.toUpperCase(), kind: r.kind || null,
+        percent_off: r.percent_off ?? null, bonus_days: r.bonus_days ?? null, at: Date.now(),
+      }
+      settingsManager.set('pendingPromo', promo)
+      return { success: true, valid: true, promo }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('promo:pending', () => settingsManager.get('pendingPromo') || null)
+  ipcMain.handle('promo:clear', () => { settingsManager.set('pendingPromo', null); return true })
+
+  // Чат поддержки: «Помогло / Не помогло» и «Позвать оператора».
+  ipcMain.handle('ai:feedback', async (_, { messageId, helpful } = {}) => {
+    try { await apiClient.supportFeedback(messageId, helpful); return { success: true } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('ai:operator', async (_, dialogId) => {
+    try { return { success: true, ...(await apiClient.supportOperator(dialogId)) } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+
+  // База знаний: статьи блога (/content/articles), запасной вариант — /faq.
+  ipcMain.handle('content:articles', async (_, category) => {
+    try {
+      const r = await apiClient.getArticles(category)
+      const items = Array.isArray(r) ? r : (r?.articles || r?.items || [])
+      return { success: true, items }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('content:article', async (_, slug) => {
+    try { return { success: true, article: await apiClient.getArticle(slug) } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('content:faq', async () => {
+    try { const r = await apiClient.getFaq(); return { success: true, items: Array.isArray(r?.items) ? r.items : [] } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
   })
 
   // Оплата: тарифы из /config, checkout → confirmation_url открываем в браузере
@@ -1303,7 +1398,9 @@ async function reconnectAfterRelink(prevRemark) {
 const TRIAL_URL = 'https://sub.popokole.online/NcvZvQsDXeQ1TJZu'
 const TRIAL_DURATION = 60 * 60 * 1000
 const DAILY_TRIAL_DURATION = 15 * 60 * 1000
-const TEST_ACCESS_DURATION = 10 * 60 * 1000 // тест-доступ с экрана входа
+// Прежний тест-доступ по общей ссылке (если на сервере гостевой доступ выключен):
+// столько же, сколько гостевой, — по умолчанию 15 минут.
+const TEST_ACCESS_DURATION = guestTrial.DEFAULT_MINUTES * 60 * 1000
 
 async function maybeAddTrial() {
   const settings = settingsManager.getAll()
@@ -1332,27 +1429,154 @@ async function maybeAddTrial() {
   }
 }
 
+// Пробный доступ закончился: убираем его подписку и, если VPN шёл через неё,
+// отключаемся. Подписку аккаунта (managed) не трогаем — она живёт по account:sync.
 function checkTrialExpiry() {
   const settings = settingsManager.getAll()
-  const subs = settings.subscriptions || []
-  // управляемая подписка живёт по данным аккаунта (account:sync), её не трогаем
-  const trial = subs.find(s => s.isTrial && !s.managed)
-  if (!trial) return
-
-  if (Date.now() > trial.expiresAt) {
-    const newSubs = subs.filter(s => !s.isTrial)
-    settingsManager.set('subscriptions', newSubs)
-
-    const wasActive = (trial.servers || []).some(s => s.id === settings.activeServerId)
+  const { kept, expired } = guestTrial.splitExpiredTrials(settings.subscriptions, Date.now())
+  if (expired.length) {
+    settingsManager.set('subscriptions', kept)
+    const wasActive = expired.some(t => (t.servers || []).some(s => s.id === settings.activeServerId))
     if (wasActive) {
       vpnManager.disconnect()
       settingsManager.set('activeServerId', null)
       refreshTray('disconnected')
       sendVpnStatus({ status: 'disconnected' })
     }
+    mainWindow?.webContents.send('sub:updated', kept)
+    console.log('[Trial] Пробный доступ закончился')
+  }
+  scheduleTrialExpiry()
+}
 
-    mainWindow?.webContents.send('sub:updated', newSubs)
-    console.log('[Trial] Пробная подписка истекла')
+// Точный таймер на конец пробного доступа (раз в 30 с — запасная проверка).
+let trialExpiryTimer = null
+function scheduleTrialExpiry() {
+  clearTimeout(trialExpiryTimer)
+  trialExpiryTimer = null
+  const next = guestTrial.nextTrialExpiry(settingsManager.get('subscriptions'), Date.now())
+  if (next) trialExpiryTimer = setTimeout(checkTrialExpiry, Math.min(Math.max(next - Date.now() + 300, 500), 0x7fffffff))
+}
+
+// ─── Гостевой доступ и «15 минут бесплатно» ───────────────────────────────────
+
+function guestState() {
+  return guestTrial.normalizeGuest(settingsManager.get('guest'))
+}
+
+function saveGuest(patch) {
+  const next = { ...guestState(), ...patch }
+  settingsManager.set('guest', next)
+  sendToWindow('guest:updated', next)
+  return next
+}
+
+// Вошли в аккаунт или вышли — гостевой режим закончился (retryAt помним).
+function endGuestSession() {
+  if (guestState().session) saveGuest({ session: false })
+}
+
+// Пробная подписка — одна: новая заменяет прежнюю пробную (не подписку аккаунта).
+function putTrialSub(sub) {
+  const subs = (settingsManager.get('subscriptions') || []).filter(s => !(s.isTrial && !s.managed))
+  const next = [sub, ...subs]
+  settingsManager.set('subscriptions', next)
+  sendToWindow('sub:updated', next)
+  scheduleTrialExpiry()
+  return next
+}
+
+// Гость: если сервер выдаёт гостевой доступ (/config.guest_trial.enabled) —
+// POST /guest/trial с HWID приложения; иначе (или ручки ещё нет) — прежний
+// тест-доступ по общей ссылке. В обоих случаях — раз в сутки.
+async function startGuestTrial() {
+  const now = Date.now()
+  let cfg = null
+  try { cfg = await apiClient.getConfig() } catch {}
+  const minutes = guestTrial.guestMinutes(cfg)
+
+  if (guestTrial.serverGuestEnabled(cfg)) {
+    try {
+      const r = await apiClient.guestTrial({ deviceId: subscriptionManager.getHwid(), version: app.getVersion() })
+      const url = r?.subscription_url
+      if (!url) throw new Error('Сервер не выдал ссылку пробного доступа')
+      const { servers, userInfo } = await subscriptionManager.fetchAndParse(url)
+      const expiresAt = guestTrial.expiryFromResponse(r, now, minutes)
+      putTrialSub(guestTrial.buildTrialSub({ kind: 'guest', url, servers, userInfo, expiresAt, now }))
+      const guest = saveGuest({
+        session: true, startedAt: now, expiresAt, retryAt: now + guestTrial.DAY,
+        source: 'server', serverName: String(r.server_name || ''), minutes,
+      })
+      console.log(`[Guest] Пробный доступ на ${minutes} мин (сервер)`)
+      return { success: true, guest }
+    } catch (e) {
+      if (e.status === 429 || e.code === 'guest_trial_used') {
+        const retryAt = guestTrial.retryFromResponse(e.data, now)
+        return { success: false, code: 'guest_trial_used', retryAt, guest: saveGuest({ retryAt }) }
+      }
+      // Выключено на сервере или ручки ещё нет — прежний тест-доступ. Другие
+      // ошибки (сеть, ссылка) показываем как есть.
+      if (![403, 404, 405, 501].includes(e.status)) {
+        console.error('[Guest] Пробный доступ:', e.message)
+        return { success: false, error: e.message || 'Не удалось включить пробный доступ' }
+      }
+      console.warn(`[Guest] Сервер не выдаёт гостевой доступ (${e.status}) — общий тест-доступ`)
+    }
+  }
+  return startLocalTrial(cfg, minutes)
+}
+
+async function startLocalTrial(cfg, minutes) {
+  const now = Date.now()
+  const retryAt = guestTrial.localRetryAt(settingsManager.get('guest'), now)
+  if (retryAt) return { success: false, code: 'guest_trial_used', retryAt, guest: guestState() }
+  // Ссылка бесплатной подписки настраивается в админке (/config → free_sub_url),
+  // с фолбэком на встроенную TRIAL_URL.
+  const trialUrl = cfg?.free_sub_url || TRIAL_URL
+  try {
+    const { servers, userInfo } = await subscriptionManager.fetchAndParse(trialUrl)
+    const expiresAt = now + (minutes ? minutes * 60 * 1000 : TEST_ACCESS_DURATION)
+    putTrialSub(guestTrial.buildTrialSub({ kind: 'guest', url: trialUrl, servers, userInfo, expiresAt, now }))
+    const guest = saveGuest({
+      session: true, startedAt: now, expiresAt, retryAt: now + guestTrial.DAY,
+      source: 'local', serverName: '', minutes: minutes || guestTrial.DEFAULT_MINUTES,
+    })
+    console.log(`[Guest] Пробный доступ на ${guest.minutes} мин (общая ссылка)`)
+    return { success: true, guest }
+  } catch (e) {
+    console.error('[Guest] Тест-доступ:', e.message)
+    return { success: false, error: e.message || 'Не удалось включить пробный доступ' }
+  }
+}
+
+// Вошедший без подписки: POST /me/daily-trial. Ссылку кладём рядом как пробную
+// подписку; если сервер выдал доступ самой подписке аккаунта — просто синхронизируемся.
+async function startDailyTrial() {
+  const now = Date.now()
+  try {
+    const r = await apiClient.dailyTrial()
+    settingsManager.set('dailyTrialRetryAt', now + guestTrial.DAY)
+    const url = r?.subscription_url
+    const expiresAt = guestTrial.expiryFromResponse(r, now)
+    const sync = await syncSubscription().catch(() => null)
+    if (!url || sync?.hasAccess) return { success: true, expiresAt }
+    const { servers, userInfo } = await subscriptionManager.fetchAndParse(url)
+    putTrialSub(guestTrial.buildTrialSub({ kind: 'daily', url, servers, userInfo, expiresAt, now }))
+    console.log('[Trial] «15 минут бесплатно» включены')
+    return { success: true, expiresAt }
+  } catch (e) {
+    if (e.status === 429 || e.code === 'daily_trial_used') {
+      const retryAt = guestTrial.retryFromResponse(e.data, now)
+      settingsManager.set('dailyTrialRetryAt', retryAt)
+      return { success: false, code: 'daily_trial_used', retryAt, error: 'Сегодня бесплатные минуты уже использованы' }
+    }
+    if (e.status === 409 || e.code === 'has_subscription') {
+      syncSubscription().catch(() => {})
+      return { success: false, code: 'has_subscription', error: 'У вас уже есть подписка' }
+    }
+    if ([404, 405, 501].includes(e.status)) return { success: false, code: 'unsupported', error: 'Пока недоступно' }
+    console.error('[Trial] «15 минут бесплатно»:', e.message)
+    return { success: false, error: e.message || 'Не удалось включить бесплатные минуты' }
   }
 }
 
@@ -1588,7 +1812,7 @@ app.whenReady().then(async () => {
   }
 
   setInterval(checkTrialExpiry, 30_000)
-  checkTrialExpiry()
+  checkTrialExpiry() // и точный таймер на конец пробного доступа
 
   setInterval(checkSubscriptionExpiry, 30 * 60 * 1000)
   setTimeout(checkSubscriptionExpiry, 10_000)

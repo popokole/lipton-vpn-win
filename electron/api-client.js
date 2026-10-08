@@ -82,6 +82,17 @@ function errMsg(resp, fallback) {
   return resp?.json?.error?.message || resp?.json?.message || fallback || `Ошибка ${resp?.status}`
 }
 
+// Ошибка HTTP с кодом и телом ответа: status, code (error.code, code или строка
+// error — например 'card_unlink_cooldown', 'guest_trial_used') и data (весь JSON,
+// там available_at / retry_at). Текст — как раньше (errMsg).
+function apiError(resp, fallback) {
+  const j = resp?.json && typeof resp.json === 'object' ? resp.json : {}
+  const code = (j.error && typeof j.error === 'object' ? j.error.code : null) ||
+    (typeof j.code === 'string' ? j.code : null) ||
+    (typeof j.error === 'string' ? j.error : null) || undefined
+  return Object.assign(new Error(errMsg(resp, fallback)), { status: resp?.status, code, data: j })
+}
+
 // ─── Refresh + защищённый запрос ────────────────────────────────────────────
 
 // single-flight: параллельные 401-запросы делят ОДИН refresh, иначе токен
@@ -120,7 +131,24 @@ async function authed(method, path, body, _retry = false) {
     if (r.invalid) clearTokens() // только реальный отказ токена рвёт сессию
     throw Object.assign(new Error('Сессия истекла, войдите снова'), { code: 'unauthorized', status: 401 })
   }
-  if (resp.status >= 400) throw Object.assign(new Error(errMsg(resp)), { status: resp.status })
+  if (resp.status >= 400) throw apiError(resp)
+  return resp.json
+}
+
+// Публичный запрос; если вошли — с токеном (например, баннеры с таргетингом по
+// аудитории). Токен не принят — повторяем без него.
+async function optionalAuthed(method, path, body) {
+  if (isAuthed()) {
+    try { return await authed(method, path, body) } catch (e) { if (e.status !== 401) throw e }
+  }
+  const resp = await requestRaw(method, path, { body })
+  if (resp.status >= 400) throw apiError(resp)
+  return resp.json
+}
+
+async function publicGet(path, fallback) {
+  const resp = await requestRaw('GET', path)
+  if (resp.status >= 400) throw apiError(resp, fallback)
   return resp.json
 }
 
@@ -259,6 +287,71 @@ function aiChat(message) { return authed('POST', '/support/ai', { message }) }
 // полную расшифровку (сервер прячет её в detail).
 function sendLogs(logs, note) { return authed('POST', '/support/ai/logs', { logs, note }) }
 
+// ─── Пробный доступ ─────────────────────────────────────────────────────────
+// Гость без аккаунта: 15 минут раз в сутки на устройство (device_id — HWID
+// приложения). 200 { subscription_url, expires_at, server_name },
+// 429 { error: 'guest_trial_used', retry_at }, 403 { error: 'guest_trial_disabled' }.
+async function guestTrial({ deviceId, version } = {}) {
+  const resp = await requestRaw('POST', '/guest/trial', {
+    body: { device_id: String(deviceId || ''), platform: 'windows', app_version: version || appVersion() },
+  })
+  if (resp.status >= 400) throw apiError(resp, 'Не удалось включить пробный доступ')
+  return resp.json
+}
+// Вошедший без подписки: 15 минут в день. 200 { expires_at, subscription_url },
+// 409 { error: 'has_subscription' }, 429 { error: 'daily_trial_used', retry_at }.
+function dailyTrial() { return authed('POST', '/me/daily-trial', {}) }
+
+// ─── Баннеры и экраны из админки ────────────────────────────────────────────
+// { banners: [{ id, kind: banner|screen|update, style, title, text, cta_text,
+// cta_url, dismissible, priority, starts_at, ends_at }] }
+function getBanners(version) {
+  return optionalAuthed('GET', `/app/banners?platform=windows&version=${encodeURIComponent(version || appVersion())}`)
+}
+
+// ─── Уведомления аккаунта ───────────────────────────────────────────────────
+// { payment_reminders, news, telegram_messages } — о списаниях и оплатах
+// сообщаем всегда, их не выключить.
+function getNotifications() { return authed('GET', '/me/notifications') }
+function setNotifications(prefs) { return authed('PUT', '/me/notifications', prefs || {}) }
+
+// ─── Смена почты ────────────────────────────────────────────────────────────
+// Код приходит на НОВЫЙ адрес (как привязка), затем /auth/email/change. Если
+// адрес был у другого аккаунта, сервер их объединяет и отдаёт новые токены.
+function emailChangeRequest(email) {
+  return authed('POST', '/auth/link/request-code', { type: 'email', identifier: email })
+}
+async function emailChange(email, code) {
+  const r = await authed('POST', '/auth/email/change', { new_email: email, code })
+  if (r?.access_token && r?.refresh_token) setTokens(r)
+  return r
+}
+
+// ─── Промокод ───────────────────────────────────────────────────────────────
+// { valid, reason?, kind: percent|days, percent_off?, bonus_days? }. Сам код
+// применяется при следующей оплате (promo_code в /payments/checkout).
+function promoValidate(code) { return authed('POST', '/promo/validate', { code }) }
+
+// ─── Поддержка: оценка ответа ИИ и оператор ─────────────────────────────────
+function supportFeedback(messageId, helpful) {
+  return authed('POST', '/support/ai/feedback', { message_id: messageId, helpful: !!helpful })
+}
+function supportOperator(dialogId) {
+  return authed('POST', '/support/ai/operator', dialogId ? { dialog_id: dialogId } : {})
+}
+
+// ─── База знаний ────────────────────────────────────────────────────────────
+// Статьи блога: [{ slug, title, category, minutes, excerpt }] и { …, html }.
+// Пока ручки нет — частые вопросы /faq ({ items: [{ id, question, answer }] }).
+function getArticles(category) {
+  const q = category ? `?category=${encodeURIComponent(category)}` : ''
+  return publicGet('/content/articles' + q, 'Не удалось загрузить статьи')
+}
+function getArticle(slug) {
+  return publicGet('/content/articles/' + encodeURIComponent(String(slug || '')), 'Статья не найдена')
+}
+function getFaq() { return publicGet('/faq', 'Не удалось загрузить ответы') }
+
 // ─── Новости ─────────────────────────────────────────────────────────────────
 // /news публичный (без токена) — лента VPN-новостей, как в веб-кабинете.
 async function getNews() {
@@ -279,5 +372,8 @@ module.exports = {
   supportGet, supportCreate, supportSend,
   getAiDialog, aiChat, sendLogs,
   getNews,
+  guestTrial, dailyTrial, getBanners, getNotifications, setNotifications,
+  emailChangeRequest, emailChange, promoValidate, supportFeedback, supportOperator,
+  getArticles, getArticle, getFaq,
   onNetworkError,
 }
