@@ -647,50 +647,55 @@ async function pingDelay() {
  * @returns {() => void} stop
  */
 function trafficStream(onSample) {
-  const { parseTrafficChunk } = require('./vpn-stats')
+  // Скорость считаем опросом /connections раз в секунду: счётчики
+  // downloadTotal/uploadTotal ядра растут монотонно, разница — байт за
+  // секунду. Потоковый /traffic на части машин молчал (скорость всегда 0).
   let stopped = false
-  let req = null
   let timer = null
+  let prev = null // { up, down, t }
 
-  const retry = () => {
-    if (stopped || timer) return
-    req = null
-    timer = setTimeout(() => { timer = null; open() }, 2000)
-  }
-
-  const open = () => {
+  const tick = () => {
+    timer = null
     if (stopped) return
     const clash = st.clash
-    if (!clash || !st.proc || (st.status !== 'connected' && st.status !== 'reconnecting')) { retry(); return }
-    let rest = ''
-    let done = false
-    const finish = () => { if (!done) { done = true; retry() } }
-    req = http.get({
-      host: '127.0.0.1', port: clash.port, path: '/traffic',
+    if (!clash || !st.proc || (st.status !== 'connected' && st.status !== 'reconnecting')) {
+      prev = null
+      schedule(); return
+    }
+    const req = http.get({
+      host: '127.0.0.1', port: clash.port, path: '/connections', timeout: 2000,
       headers: { Authorization: `Bearer ${clash.secret}` },
     }, res => {
-      if (res.statusCode !== 200) { res.resume(); finish(); return }
+      if (res.statusCode !== 200) { res.resume(); schedule(); return }
+      let body = ''
       res.setEncoding('utf8')
-      res.on('data', chunk => {
-        const p = parseTrafficChunk(rest, chunk)
-        rest = p.rest
-        for (const s of p.samples) {
-          try { onSample(s.up, s.down) } catch { /* ошибка подписчика не рвёт поток */ }
-        }
+      res.on('data', c => { if (body.length < 4 * 1024 * 1024) body += c })
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(body)
+          const up = Number(j.uploadTotal) || 0
+          const down = Number(j.downloadTotal) || 0
+          const t = Date.now()
+          if (prev && up >= prev.up && down >= prev.down && t > prev.t) {
+            const k = 1000 / (t - prev.t)
+            try { onSample(Math.round((up - prev.up) * k), Math.round((down - prev.down) * k)) } catch { /* подписчик */ }
+          }
+          prev = { up, down, t }
+        } catch { /* битый ответ — пропускаем */ }
+        schedule()
       })
-      res.on('end', finish)
-      res.on('error', finish)
+      res.on('error', schedule)
     })
-    req.on('error', finish)
+    req.on('timeout', () => req.destroy())
+    req.on('error', () => schedule())
   }
+  const schedule = () => { if (!stopped && !timer) timer = setTimeout(tick, 1000) }
 
-  open()
+  schedule()
   return () => {
     stopped = true
     clearTimeout(timer)
     timer = null
-    try { req?.destroy() } catch {}
-    req = null
   }
 }
 

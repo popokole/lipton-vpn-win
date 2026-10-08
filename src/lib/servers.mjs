@@ -66,8 +66,8 @@ export function signalLevel(ms) {
 // Цвет пинга: хороший / средний / плохой / нет данных.
 export function pingTone(ms) {
   if (ms == null) return 'none'
-  if (ms < 150) return 'ok'
-  if (ms < 300) return 'warn'
+  if (ms <= 250) return 'ok' // зелёный до 250 мс (решение владельца)
+  if (ms < 400) return 'warn'
   return 'bad'
 }
 
@@ -76,7 +76,7 @@ export function pingTone(ms) {
 const ACCENTS = ['emerald', 'cyan', 'blue']
 export function serverAccent(index, ms, bypass = false) {
   if (bypass) return 'violet'
-  if (ms != null && ms >= 150) return 'orange'
+  if (ms != null && ms > 250) return 'orange'
   return ACCENTS[Math.abs(index) % ACCENTS.length]
 }
 

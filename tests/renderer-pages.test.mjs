@@ -121,9 +121,9 @@ test('servers: Авто-баланс, «Обход», подписи и пинг
   assert.deepEqual(splitRemark('Авто-баланс'), { title: 'Авто-баланс', sub: '' })
   assert.deepEqual([null, 41, 120, 200].map(ms => pingTag(ms).label), ['пинг не измерен', 'низкий пинг', 'стабильный', 'высокий пинг'])
   assert.deepEqual([null, 40, 100, 200, 400].map(signalLevel), [0, 4, 3, 2, 1])
-  assert.deepEqual([null, 40, 200, 400].map(pingTone), ['none', 'ok', 'warn', 'bad'])
+  assert.deepEqual([null, 40, 250, 300, 400].map(pingTone), ['none', 'ok', 'ok', 'warn', 'bad'])
   assert.deepEqual([0, 1, 2, 3].map(i => serverAccent(i, 40)), ['emerald', 'cyan', 'blue', 'emerald'])
-  assert.equal(serverAccent(0, 160), 'orange')
+  assert.equal(serverAccent(0, 260), 'orange')
   assert.equal(serverAccent(0, 40, true), 'violet')
 
   const list = [{ id: 'a', remark: 'Авто-баланс' }, { id: 'b', remark: 'Обход · DE' }, { id: 'c', remark: '🇩🇪 Германия' }]

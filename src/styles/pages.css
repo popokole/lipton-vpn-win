@@ -125,6 +125,7 @@
 }
 :root[data-theme='light'] .ui-flag { border-color: rgba(14, 20, 18, 0.10); }
 .ui-flag.fi::before { content: none; }
+.ui-flag.fi, .ui-flag.fi.fis { background-size: cover !important; background-position: center !important; background-repeat: no-repeat; line-height: normal; }
 .ui-flag--none,
 .ui-flag--auto {
   display: inline-flex;
