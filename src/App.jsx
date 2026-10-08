@@ -215,6 +215,17 @@ export default function App() {
 
   const openAuth = useCallback((step = 'login', params = null) => setGate({ step, params }), [])
 
+  // Новый день — гость может снова взять пробный доступ прямо с экрана «15 минут прошли».
+  const [guestRetrying, setGuestRetrying] = useState(false)
+  const retryGuest = useCallback(async () => {
+    setGuestRetrying(true)
+    const r = await window.api.guestStart?.().catch(e => ({ success: false, error: e?.message }))
+    setGuestRetrying(false)
+    if (r?.success) { await handleGuest(); return }
+    await refreshGuest()
+    addToast(r?.code === 'guest_trial_used' ? 'Сегодня пробный доступ уже был' : (r?.error || 'Не удалось включить пробный доступ'), 'error')
+  }, [handleGuest, refreshGuest, addToast])
+
   useEffect(() => {
     const offVpn = window.api.onVpnStatus(data => {
       setVpnStatus(data.status)
@@ -561,6 +572,8 @@ export default function App() {
         onCreate={() => openAuth('start')}
         onLogin={() => openAuth('login')}
         onTariffs={() => openAuth('start')}
+        onRetry={retryGuest}
+        retrying={guestRetrying}
       />
     )
   } else {

@@ -43,7 +43,7 @@ export function GuestStrip({ msLeft, totalMs, progress, onCreate, onLogin }) {
 
 // «15 минут прошли»: вместо главной — кольцо 0:00, создать аккаунт или войти,
 // тарифы и время следующей бесплатной попытки.
-export function GuestEnded({ minutes = 15, retryAt, cheapest, onCreate, onLogin, onTariffs }) {
+export function GuestEnded({ minutes = 15, retryAt, cheapest, onCreate, onLogin, onTariffs, onRetry, retrying = false }) {
   const next = retryLabel(retryAt)
   return (
     <section className="guest-ended ui-rise" aria-label="Пробный доступ закончился" style={{ '--i': 0 }}>
@@ -67,7 +67,13 @@ export function GuestEnded({ minutes = 15, retryAt, cheapest, onCreate, onLogin,
             {cheapest ? <span className="guest-ended-price">от <b className="num">{rub(cheapest)}</b> / мес</span> : null}
             <Icon name="chevronRight" size={16} stroke={2} className="set-row-chev" />
           </button>
-          {next && <div className="guest-ended-next"><Icon name="clock" size={13} stroke={2} />Следующая бесплатная попытка — {next}</div>}
+          {next ? (
+            <div className="guest-ended-next"><Icon name="clock" size={13} stroke={2} />Следующая бесплатная попытка — {next}</div>
+          ) : onRetry ? (
+            <button type="button" className="onb-resend guest-ended-retry" onClick={onRetry} disabled={retrying}>
+              <Icon name="refresh" size={13} stroke={2.2} /><span>{retrying ? 'Включаем…' : `Ещё ${minutes} минут бесплатно — новый день`}</span>
+            </button>
+          ) : null}
         </div>
       </div>
     </section>

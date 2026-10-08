@@ -844,3 +844,4 @@
   .promo-how { grid-template-columns: minmax(0, 1fr); }
   .titlebar-name { display: none; }
 }
+.guest-ended-retry { align-self: flex-start; padding-left: 0; }
