@@ -63,6 +63,19 @@ function retryFromResponse(data, now = Date.now()) {
   return t && t > now ? t : now + DAY
 }
 
+// Следующая попытка из успешного ответа (next_available_at); нет — сутки от сейчас.
+function nextFromResponse(data, now = Date.now()) {
+  const t = toMs(data?.next_available_at)
+  return t && t > now ? t : now + DAY
+}
+
+// 429 — это «уже пробовали сегодня» (а не «слишком часто, подождите минуту»).
+function isTrialUsed(err, code) {
+  if (!err) return false
+  if (err.code === code) return true
+  return err.status === 429 && err.code !== 'rate_limited'
+}
+
 // Срок из ответа сервера: expires_at; если его нет — minutes от начала.
 function expiryFromResponse(data, now = Date.now(), minutes = DEFAULT_MINUTES) {
   const t = toMs(data?.expires_at)
@@ -121,5 +134,5 @@ function keepOnSync(subs, accountHasLink) {
 module.exports = {
   DAY, DEFAULT_MINUTES,
   guestMinutes, serverGuestEnabled, normalizeGuest, localRetryAt, retryFromResponse,
-  expiryFromResponse, buildTrialSub, splitExpiredTrials, nextTrialExpiry, keepOnSync,
+  expiryFromResponse, nextFromResponse, isTrialUsed, buildTrialSub, splitExpiredTrials, nextTrialExpiry, keepOnSync,
 }

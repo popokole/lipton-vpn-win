@@ -300,7 +300,9 @@ async function guestTrial({ deviceId, version } = {}) {
 }
 // Вошедший без подписки: 15 минут в день. 200 { expires_at, subscription_url },
 // 409 { error: 'has_subscription' }, 429 { error: 'daily_trial_used', retry_at }.
-function dailyTrial() { return authed('POST', '/me/daily-trial', {}) }
+function dailyTrial({ deviceId, version } = {}) {
+  return authed('POST', '/me/daily-trial', { device_id: String(deviceId || ''), platform: 'windows', app_version: version || appVersion() })
+}
 
 // ─── Баннеры и экраны из админки ────────────────────────────────────────────
 // { banners: [{ id, kind: banner|screen|update, style, title, text, cta_text,

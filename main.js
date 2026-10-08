@@ -1504,13 +1504,13 @@ async function startGuestTrial() {
       const expiresAt = guestTrial.expiryFromResponse(r, now, minutes)
       putTrialSub(guestTrial.buildTrialSub({ kind: 'guest', url, servers, userInfo, expiresAt, now }))
       const guest = saveGuest({
-        session: true, startedAt: now, expiresAt, retryAt: now + guestTrial.DAY,
-        source: 'server', serverName: String(r.server_name || ''), minutes,
+        session: true, startedAt: now, expiresAt, retryAt: guestTrial.nextFromResponse(r, now),
+        source: 'server', serverName: String(r.server_name || ''), minutes: Number(r.minutes) || minutes,
       })
       console.log(`[Guest] Пробный доступ на ${minutes} мин (сервер)`)
       return { success: true, guest }
     } catch (e) {
-      if (e.status === 429 || e.code === 'guest_trial_used') {
+      if (guestTrial.isTrialUsed(e, 'guest_trial_used')) {
         const retryAt = guestTrial.retryFromResponse(e.data, now)
         return { success: false, code: 'guest_trial_used', retryAt, guest: saveGuest({ retryAt }) }
       }
@@ -1554,8 +1554,8 @@ async function startLocalTrial(cfg, minutes) {
 async function startDailyTrial() {
   const now = Date.now()
   try {
-    const r = await apiClient.dailyTrial()
-    settingsManager.set('dailyTrialRetryAt', now + guestTrial.DAY)
+    const r = await apiClient.dailyTrial({ deviceId: subscriptionManager.getHwid(), version: app.getVersion() })
+    settingsManager.set('dailyTrialRetryAt', guestTrial.nextFromResponse(r, now))
     const url = r?.subscription_url
     const expiresAt = guestTrial.expiryFromResponse(r, now)
     const sync = await syncSubscription().catch(() => null)
@@ -1565,7 +1565,7 @@ async function startDailyTrial() {
     console.log('[Trial] «15 минут бесплатно» включены')
     return { success: true, expiresAt }
   } catch (e) {
-    if (e.status === 429 || e.code === 'daily_trial_used') {
+    if (guestTrial.isTrialUsed(e, 'daily_trial_used')) {
       const retryAt = guestTrial.retryFromResponse(e.data, now)
       settingsManager.set('dailyTrialRetryAt', retryAt)
       return { success: false, code: 'daily_trial_used', retryAt, error: 'Сегодня бесплатные минуты уже использованы' }
@@ -1574,7 +1574,9 @@ async function startDailyTrial() {
       syncSubscription().catch(() => {})
       return { success: false, code: 'has_subscription', error: 'У вас уже есть подписка' }
     }
-    if ([404, 405, 501].includes(e.status)) return { success: false, code: 'unsupported', error: 'Пока недоступно' }
+    if ([404, 405, 501].includes(e.status) || e.code === 'daily_trial_disabled') {
+      return { success: false, code: 'unsupported', error: 'Бесплатные минуты сейчас недоступны' }
+    }
     console.error('[Trial] «15 минут бесплатно»:', e.message)
     return { success: false, error: e.message || 'Не удалось включить бесплатные минуты' }
   }
