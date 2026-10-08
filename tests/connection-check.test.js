@@ -5,7 +5,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 
 const {
-  runConnectionCheck, parseTrace, countryName, isCloudflareIp,
+  runConnectionCheck, runDirectCheck, parseTrace, countryName, isCloudflareIp,
   TRACE_URLS, IPV6_URLS, DNS_WHOAMI_HOST,
 } = require('../electron/connection-check')
 
@@ -155,4 +155,28 @@ test('IPv6: утечка по литералу ловится, даже когд
   const r = await runConnectionCheck({ status: 'connected', mode: 'tun', fetchText: n.fetchText, lookup: lookupOk('172.70.100.1') })
   assert.equal(item(r, 'ipv6').status, 'fail')
   assert.equal(item(r, 'ipv6').detail, 'IP 2a00:1370:8000::2')
+})
+
+test('без VPN: настоящий IP и страна по trace, есть ли IPv6 (плитка «Сайты видят вас»)', async () => {
+  const v6 = ['ip=2001:db8::5', 'loc=RU', ''].join(String.fromCharCode(10))
+  let r = await runDirectCheck({ fetchText: fakeNet({ [TRACE_URLS.cloudflare]: trace('198.51.100.7', 'ru'), [IPV6_URLS[0]]: v6 }).fetchText })
+  assert.equal(r.kind, 'direct')
+  assert.equal(r.ok, true)
+  assert.equal(r.ip, '198.51.100.7')
+  assert.equal(r.country, 'RU')
+  assert.equal(r.countryName, countryName('RU'))
+  assert.equal(r.ipv6, true)
+
+  // IPv6 нет, trace не ответил — ok=false, но без исключения
+  r = await runDirectCheck({ fetchText: fakeNet({}).fetchText, timeoutMs: 50 })
+  assert.equal(r.ok, false)
+  assert.equal(r.ip, '')
+  assert.equal(r.ipv6, false)
+})
+
+test('через VPN: в пунктах «видят сайты» есть отдельное поле ip', async () => {
+  const { fetchText } = fakeNet(healthy)
+  const r = await runConnectionCheck({ status: 'connected', mode: 'tun', fetchText, lookup: lookupOk('1.1.1.1') })
+  assert.equal(item(r, 'cloudflare').ip, '203.0.113.221')
+  assert.equal(item(r, 'chatgpt').ip, '203.0.113.221')
 })

@@ -13,6 +13,7 @@ const apiClient = require('./electron/api-client')
 const connectionCheck = require('./electron/connection-check')
 const windowState = require('./electron/window-state')
 const { makeLogoPng } = require('./electron/tray-icon')
+const { createStats } = require('./electron/vpn-stats')
 const { setupAutoUpdater } = require('./electron/auto-updater')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
@@ -74,6 +75,113 @@ function serviceHosts(subs) {
   add(TRIAL_URL)
   for (const s of subs || []) if (s.managed || s.isTrial) add(s.url)
   return [...hosts]
+}
+
+// ─── Сессия VPN: таймер, статистика, «что видят сайты» ───────────────────────
+// Все события vpn:status-update идут через sendVpnStatus: он ведёт начало сессии
+// (connectedAt — для таймера на главной), запускает и останавливает статистику
+// ядра (скорость, пинг, итоги дня) и обновляет «что видят сайты».
+
+const vpnStats = createStats({
+  load: () => settingsManager.get('trafficDaily'),
+  save: daily => settingsManager.set('trafficDaily', daily),
+})
+let vpnConnectedAt = null
+let statsStopStream = null
+let statsPingTimer = null
+let statsPingKick = null
+
+function startSessionStats(at) {
+  stopSessionStats()
+  const live = activeCore === singboxCore // у запасного ядра xray нет clash_api
+  vpnStats.start(at, { live })
+  if (!live) return
+  statsStopStream = singboxCore.trafficStream((up, down) => vpnStats.addTraffic(up, down))
+  const ping = async () => {
+    const ms = await singboxCore.pingDelay().catch(() => null)
+    if (vpnConnectedAt) vpnStats.addPing(ms)
+  }
+  statsPingKick = setTimeout(ping, 3000)
+  statsPingTimer = setInterval(ping, 60_000)
+}
+
+function stopSessionStats() {
+  statsStopStream?.()
+  statsStopStream = null
+  clearTimeout(statsPingKick)
+  clearInterval(statsPingTimer)
+  statsPingKick = null
+  statsPingTimer = null
+  vpnStats.stop()
+}
+
+function sendVpnStatus(data) {
+  const status = data?.status
+  if (status === 'connected') {
+    if (!vpnConnectedAt) {
+      vpnConnectedAt = Date.now()
+      startSessionStats(vpnConnectedAt)
+    }
+    scheduleExposure('connected')
+  } else if (status !== 'reconnecting') {
+    // отключено, kill switch или новое подключение — сессия закончилась
+    if (vpnConnectedAt) {
+      vpnConnectedAt = null
+      stopSessionStats()
+    }
+    if (status === 'disconnected') scheduleExposure('disconnected')
+  }
+  sendToWindow('vpn:status-update', { ...data, connectedAt: vpnConnectedAt })
+}
+
+// «Что видят сайты» для плиток главной: после подключения — облегчённая
+// «Проверка соединения» через VPN (IPv6, DNS, страна), при выключенном VPN —
+// настоящий IP напрямую. Результат хранится в памяти и уходит в окно.
+let lastExposure = null
+let exposureTimer = null
+let exposureRunning = null
+
+function scheduleExposure(expected, delay) {
+  clearTimeout(exposureTimer)
+  exposureTimer = setTimeout(() => {
+    exposureTimer = null
+    refreshExposure(expected).catch(e => console.warn('[Check] Фоновая проверка:', e.message))
+  }, delay ?? (expected === 'connected' ? 2500 : 1500))
+}
+
+async function directCheck() {
+  const ses = session.fromPartition('lipton-connection-check')
+  await ses.setProxy({ mode: 'direct' })
+  await ses.closeAllConnections()
+  return connectionCheck.runDirectCheck({
+    fetchText: async (url, timeoutMs) => {
+      const res = await ses.fetch(url, { cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(timeoutMs) })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.text()).slice(0, 4096)
+    },
+  })
+}
+
+function rememberExposure(result, status) {
+  lastExposure = { ...result, status, serverId: settingsManager.get('activeServerId'), at: Date.now() }
+  sendToWindow('vpn:check-result', lastExposure)
+  return lastExposure
+}
+
+async function refreshExposure(expected) {
+  if (exposureRunning) return exposureRunning
+  const status = vpnManager.getStatus()
+  if (expected && status !== expected) return null
+  if (status !== 'connected' && (status !== 'disconnected' || vpnManager.isKillSwitchEngaged())) return null
+  // IP без VPN не меняется часто — не дёргаем сеть на каждое «отключено» (повторы автоподключения)
+  if (status === 'disconnected' && lastExposure?.status === 'disconnected' && Date.now() - lastExposure.at < 60_000) return lastExposure
+  exposureRunning = (async () => {
+    const result = status === 'connected' ? await runConnectionCheck() : await directCheck()
+    // пока шла проверка, статус сменился — результат уже не про текущее состояние
+    if (vpnManager.getStatus() !== status) return null
+    return rememberExposure(result, status)
+  })().finally(() => { exposureRunning = null })
+  return exposureRunning
 }
 
 // В dev — отдельный userData, чтобы single-instance lock не конфликтовал с
@@ -509,7 +617,7 @@ function setupIPC() {
     vpnManager.setKillSwitch(enabled)
     if (!enabled && vpnManager.getStatus() === 'disconnected') {
       vpnManager.clearProxy()
-      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected', serverId: null })
+      sendVpnStatus({ status: 'disconnected', serverId: null })
     }
     console.log(`[Settings] Kill Switch: ${enabled ? 'вкл' : 'выкл'}`)
   })
@@ -575,7 +683,7 @@ function setupIPC() {
       await vpnManager.disconnect()
       settingsManager.set('activeServerId', null)
       refreshTray('disconnected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+      sendVpnStatus({ status: 'disconnected' })
 
       // 2. Force-clear proxy in registry (in case clearProxy was already called but other VPN left garbage)
       const REG_NET = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'
@@ -650,7 +758,7 @@ function setupIPC() {
       await vpnManager.disconnect()
       settingsManager.set('activeServerId', null)
       refreshTray('disconnected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+      sendVpnStatus({ status: 'disconnected' })
       console.log('[Settings] Прокси Windows сброшен')
       return { success: true }
     } catch (err) {
@@ -663,7 +771,21 @@ function setupIPC() {
   ipcMain.handle('vpn:status', () => ({
     status: vpnManager.isKillSwitchEngaged() ? 'kill-switch' : vpnManager.getStatus(),
     serverId: settingsManager.get('activeServerId'),
+    connectedAt: vpnConnectedAt,
   }))
+
+  // Статистика для главной: таймер, скорость, байты сессии, пинг, итоги дня и недели.
+  ipcMain.handle('vpn:stats', () => vpnStats.snapshot())
+
+  // Последний результат «что видят сайты» (полная проверка через VPN или IP без VPN).
+  // Нет результата или он про другое состояние — запускаем фоновую проверку.
+  ipcMain.handle('vpn:last-check', () => {
+    const status = vpnManager.getStatus()
+    const stale = !lastExposure || lastExposure.status !== status ||
+      (status === 'disconnected' && Date.now() - lastExposure.at > 10 * 60_000)
+    if (stale && !exposureTimer && !exposureRunning) scheduleExposure(status, 300)
+    return lastExposure && lastExposure.status === status ? lastExposure : null
+  })
 
   ipcMain.handle('vpn:connect', async (_, serverId) => {
     cancelAutoConnectRetry()
@@ -681,7 +803,7 @@ function setupIPC() {
       if (result.success) {
         settingsManager.set('activeServerId', serverId)
         refreshTray('connected')
-        mainWindow?.webContents.send('vpn:status-update', { status: 'connected', serverId })
+        sendVpnStatus({ status: 'connected', serverId })
       } else {
         console.error('[VPN:Connect] Подключение не удалось:', result.error || '(нет деталей)')
         if (!result.keptPrevious && vpnManager.getStatus() === 'disconnected') refreshTray('disconnected')
@@ -698,7 +820,14 @@ function setupIPC() {
   let checkRunning = null
   ipcMain.handle('vpn:check-connection', () => {
     if (!checkRunning) {
-      checkRunning = runConnectionCheck().finally(() => { checkRunning = null })
+      const status = vpnManager.getStatus()
+      checkRunning = runConnectionCheck()
+        .then(r => {
+          // ручная проверка обновляет и плитки главной
+          if (status === 'connected' && vpnManager.getStatus() === 'connected' && r.items?.length) rememberExposure(r, status)
+          return r
+        })
+        .finally(() => { checkRunning = null })
     }
     return checkRunning
   })
@@ -708,7 +837,7 @@ function setupIPC() {
       await vpnManager.disconnect()
       settingsManager.set('activeServerId', null)
       refreshTray('disconnected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+      sendVpnStatus({ status: 'disconnected' })
       return { success: true }
     } catch (err) {
       return { success: false, error: err.message }
@@ -766,7 +895,7 @@ function setupIPC() {
     settingsManager.set('subscriptions', [])
     await apiClient.logout()
     refreshTray('disconnected')
-    mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+    sendVpnStatus({ status: 'disconnected' })
     mainWindow?.webContents.send('sub:updated', [])
     return { success: true }
   })
@@ -788,6 +917,78 @@ function setupIPC() {
   ipcMain.handle('account:delete-card', async () => {
     try { await apiClient.deleteCard(); return { success: true } }
     catch (e) { return { success: false, error: e.message } }
+  })
+
+  // Устройства на подписке: список, отвязка одного и всех.
+  ipcMain.handle('account:devices', async () => {
+    try { return { success: true, hwid: subscriptionManager.getHwid(), ...(await apiClient.getDevices()) } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('account:revoke-device', async (_, hwid) => {
+    try { await apiClient.revokeDevice(String(hwid || '')); return { success: true } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('account:revoke-all-devices', async () => {
+    try { await apiClient.revokeAllDevices(); return { success: true } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+
+  // «Обновить ссылку»: старая ссылка и все устройства на ней отключатся. После —
+  // свежая подписка и, если VPN был включён, переподключение к тому же серверу.
+  ipcMain.handle('account:relink', async (_, expectedVersion) => {
+    const prevRemark = activeServerRemark()
+    try {
+      const view = await apiClient.relink(expectedVersion)
+      const sync = await syncSubscription()
+      reconnectAfterRelink(prevRemark).catch(e => console.error('[Relink] Переподключение:', e.message))
+      console.log('[Relink] Ссылка подписки обновлена')
+      return { success: true, view: sync?.view || view }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+
+  // Способы входа (почта, Telegram) и отвязка одного из них.
+  ipcMain.handle('account:identities', async () => {
+    try { return { success: true, ...(await apiClient.getIdentities()) } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+  ipcMain.handle('account:unlink-identity', async (_, id) => {
+    try { await apiClient.deleteIdentity(id); return { success: true } }
+    catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+
+  // Отмена подписки: сразу, без возврата; затем подтягиваем новое состояние.
+  ipcMain.handle('account:cancel-subscription', async () => {
+    try {
+      const res = await apiClient.cancelSubscription()
+      console.log('[Account] Подписка отменена')
+      syncSubscription().catch(() => {})
+      return { success: true, ...res }
+    } catch (e) { return { success: false, error: e.message, httpStatus: e.status } }
+  })
+
+  // Статус серверов (публичный) — полоса «Статус серверов» в Новостях.
+  ipcMain.handle('status:servers', async () => {
+    try { return { success: true, ...(await apiClient.getServerStatus()) } }
+    catch (e) { return { success: false, error: e.message } }
+  })
+
+  // Прочитанные новости — локально, только на этом компьютере.
+  ipcMain.handle('news:get-read', () => {
+    const ids = settingsManager.get('newsReadIds')
+    return Array.isArray(ids) ? ids : []
+  })
+  ipcMain.handle('news:set-read', (_, ids) => {
+    const list = (Array.isArray(ids) ? ids : []).map(String).filter(Boolean).slice(-300)
+    settingsManager.set('newsReadIds', list)
+    return list
+  })
+
+  // Уведомления о подписке на рабочем столе (по умолчанию включены).
+  ipcMain.handle('settings:get-notifications', () => settingsManager.get('notifications') !== false)
+  ipcMain.handle('settings:set-notifications', (_, enabled) => {
+    settingsManager.set('notifications', !!enabled)
+    console.log(`[Settings] Уведомления: ${enabled ? 'вкл' : 'выкл'}`)
+    return !!enabled
   })
 
   // Тестовый доступ на 10 минут без аккаунта (с экрана входа) — чтобы можно
@@ -942,7 +1143,7 @@ function setupIPC() {
           await vpnManager.disconnect()
           settingsManager.set('activeServerId', null)
           refreshTray('disconnected')
-          mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+          sendVpnStatus({ status: 'disconnected' })
         }
       }
 
@@ -1051,6 +1252,46 @@ function setupIPC() {
   })
 }
 
+// ─── «Обновить ссылку»: переподключение ──────────────────────────────────────
+
+function activeServerRemark() {
+  const settings = settingsManager.getAll()
+  const id = settings.activeServerId
+  for (const sub of settings.subscriptions || []) {
+    const s = (sub.servers || []).find(x => x.id === id)
+    if (s) return s.remark
+  }
+  return null
+}
+
+// Старая ссылка отозвана — прежний туннель больше не пустят. Если VPN был
+// включён, подключаемся заново к серверу с тем же названием (или к первому).
+async function reconnectAfterRelink(prevRemark) {
+  const status = vpnManager.getStatus()
+  if (status !== 'connected' && status !== 'reconnecting') return
+  const settings = settingsManager.getAll()
+  const servers = (settings.subscriptions || []).flatMap(s => s.servers || [])
+  const server = servers.find(s => s.remark === prevRemark) || servers[0]
+  if (!server) {
+    await vpnManager.disconnect()
+    settingsManager.set('activeServerId', null)
+    refreshTray('disconnected')
+    sendVpnStatus({ status: 'disconnected', serverId: null })
+    return
+  }
+  sendVpnStatus({ status: 'connecting', serverId: server.id })
+  const r = await vpnManager.connect(server, buildConnectOptions(settings))
+  if (r.success) {
+    settingsManager.set('activeServerId', server.id)
+    refreshTray('connected')
+    sendVpnStatus({ status: 'connected', serverId: server.id })
+  } else if (vpnManager.getStatus() === 'disconnected') {
+    const ks = vpnManager.isKillSwitchEngaged()
+    refreshTray(ks ? 'kill-switch' : 'disconnected')
+    sendVpnStatus({ status: ks ? 'kill-switch' : 'disconnected', serverId: null })
+  }
+}
+
 // ─── Trial subscription ───────────────────────────────────────────────────────
 
 const TRIAL_URL = 'https://sub.popokole.online/NcvZvQsDXeQ1TJZu'
@@ -1101,7 +1342,7 @@ function checkTrialExpiry() {
       vpnManager.disconnect()
       settingsManager.set('activeServerId', null)
       refreshTray('disconnected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected' })
+      sendVpnStatus({ status: 'disconnected' })
     }
 
     mainWindow?.webContents.send('sub:updated', newSubs)
@@ -1172,18 +1413,18 @@ function buildConnectOptions(settings) {
     onUnexpectedDisconnect: () => {
       settingsManager.set('activeServerId', null)
       refreshTray('disconnected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'disconnected', serverId: null })
+      sendVpnStatus({ status: 'disconnected', serverId: null })
     },
     onKillSwitch: () => {
       refreshTray('kill-switch')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'kill-switch', serverId: null })
+      sendVpnStatus({ status: 'kill-switch', serverId: null })
     },
     onReconnecting: () => {
-      mainWindow?.webContents.send('vpn:status-update', { status: 'reconnecting', serverId: settingsManager.get('activeServerId') })
+      sendVpnStatus({ status: 'reconnecting', serverId: settingsManager.get('activeServerId') })
     },
     onReconnected: () => {
       refreshTray('connected')
-      mainWindow?.webContents.send('vpn:status-update', { status: 'connected', serverId: settingsManager.get('activeServerId') })
+      sendVpnStatus({ status: 'connected', serverId: settingsManager.get('activeServerId') })
     },
   }
 }
@@ -1226,7 +1467,7 @@ async function doAutoConnect(attempt = 0) {
   if (!server) return
 
   console.log(`[AutoConnect] Подключение к: ${server.remark || server.address}${attempt ? ` (повтор ${attempt}/${AUTO_CONNECT_RETRY_MS.length})` : ''}`)
-  mainWindow?.webContents.send('vpn:status-update', { status: 'connecting' })
+  sendVpnStatus({ status: 'connecting' })
 
   const result = await vpnManager.connect(server, buildConnectOptions(settings))
   if (myGen !== autoConnectGen) return // пользователь сам подключился/отключился
@@ -1234,11 +1475,11 @@ async function doAutoConnect(attempt = 0) {
   if (result.success) {
     settingsManager.set('activeServerId', serverId)
     refreshTray('connected')
-    mainWindow?.webContents.send('vpn:status-update', { status: 'connected', serverId })
+    sendVpnStatus({ status: 'connected', serverId })
     return
   }
   if (vpnManager.getStatus() !== 'disconnected') return
-  mainWindow?.webContents.send('vpn:status-update', { status: vpnManager.isKillSwitchEngaged() ? 'kill-switch' : 'disconnected' })
+  sendVpnStatus({ status: vpnManager.isKillSwitchEngaged() ? 'kill-switch' : 'disconnected' })
   if (attempt < AUTO_CONNECT_RETRY_MS.length && isRetryableConnectError(result.error)) {
     const delay = AUTO_CONNECT_RETRY_MS[attempt]
     console.warn(`[AutoConnect] Не удалось (${result.error}). Повтор через ${delay / 1000} с`)
@@ -1270,8 +1511,8 @@ function checkSubscriptionExpiry() {
       if (notified[key]) continue
       if (msLeft > t.ms) continue
 
-      // Show desktop notification
-      try {
+      // Уведомление на рабочем столе — если не выключено в настройках
+      if (settings.notifications !== false) try {
         const { Notification } = require('electron')
         new Notification({
           title: 'Lipton VPN — подписка заканчивается',
@@ -1376,6 +1617,7 @@ app.on('before-quit', (event) => {
   // чтобы сработали 'quit'-обработчики (в т.ч. установка обновления при выходе).
   event.preventDefault()
   quitting = true
+  try { vpnStats.flush() } catch {}
   const done = () => app.quit()
   const timer = setTimeout(done, 8000)
   vpnManager.disconnect()

@@ -629,6 +629,71 @@ async function serverDelays(ids) {
   return out
 }
 
+/**
+ * Пинг выбранного сервера через ядро (для спарклайна «Пинг за час»).
+ * @returns {Promise<number|null>} мс или null, если ядро не подключено или сервер не ответил
+ */
+async function pingDelay() {
+  if (st.status !== 'connected' || !st.proc || !st.clash) return null
+  const r = await probe('proxy', [PING_URL], PING_TIMEOUT_MS)
+  return r.ok && typeof r.delay === 'number' ? r.delay : null
+}
+
+/**
+ * Поток скорости из clash_api: GET /traffic раз в секунду отдаёт строку
+ * {"up":N,"down":N} — байт за последнюю секунду. Обрыв (перезапуск ядра
+ * супервизором) — переоткрываем через 2 с, пока не вызван stop.
+ * @param {(up: number, down: number) => void} onSample
+ * @returns {() => void} stop
+ */
+function trafficStream(onSample) {
+  const { parseTrafficChunk } = require('./vpn-stats')
+  let stopped = false
+  let req = null
+  let timer = null
+
+  const retry = () => {
+    if (stopped || timer) return
+    req = null
+    timer = setTimeout(() => { timer = null; open() }, 2000)
+  }
+
+  const open = () => {
+    if (stopped) return
+    const clash = st.clash
+    if (!clash || !st.proc || (st.status !== 'connected' && st.status !== 'reconnecting')) { retry(); return }
+    let rest = ''
+    let done = false
+    const finish = () => { if (!done) { done = true; retry() } }
+    req = http.get({
+      host: '127.0.0.1', port: clash.port, path: '/traffic',
+      headers: { Authorization: `Bearer ${clash.secret}` },
+    }, res => {
+      if (res.statusCode !== 200) { res.resume(); finish(); return }
+      res.setEncoding('utf8')
+      res.on('data', chunk => {
+        const p = parseTrafficChunk(rest, chunk)
+        rest = p.rest
+        for (const s of p.samples) {
+          try { onSample(s.up, s.down) } catch { /* ошибка подписчика не рвёт поток */ }
+        }
+      })
+      res.on('end', finish)
+      res.on('error', finish)
+    })
+    req.on('error', finish)
+  }
+
+  open()
+  return () => {
+    stopped = true
+    clearTimeout(timer)
+    timer = null
+    try { req?.destroy() } catch {}
+    req = null
+  }
+}
+
 // Синхронная аварийная очистка — для process.on('exit').
 function emergencyCleanupSync() {
   const proc = st.proc
@@ -686,4 +751,6 @@ module.exports = {
   findSingbox,
   checkTunnel,
   serverDelays,
+  pingDelay,
+  trafficStream,
 }

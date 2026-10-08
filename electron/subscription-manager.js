@@ -276,4 +276,4 @@ async function pingAll(sub, subscriptions, pingFn = null) {
   return { success: true, subscriptions: updated }
 }
 
-module.exports = { validateUrl, fetchAndParse, add, refresh, pingAll, parseUri }
+module.exports = { validateUrl, fetchAndParse, add, refresh, pingAll, parseUri, getHwid }

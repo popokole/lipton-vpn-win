@@ -144,6 +144,31 @@ async function runConnectionCheck({ status, mode, fetchText, lookup, timeoutMs =
   })
 }
 
+/**
+ * Что видят сайты без VPN (для плитки «Сайты видят вас» на главной, когда VPN
+ * выключен): настоящий IP и страна по trace Cloudflare, есть ли IPv6.
+ * Один-два запроса напрямую; результат только для окна, в лог не пишется.
+ * @param {object} p
+ * @param {(url:string, timeoutMs:number)=>Promise<string>} p.fetchText
+ */
+async function runDirectCheck({ fetchText, timeoutMs = 5000 }) {
+  const [cf, v6] = await Promise.allSettled([
+    withTimeout(fetchText(TRACE_URLS.cloudflare, timeoutMs), timeoutMs + 1000).then(parseTrace),
+    withTimeout(fetchText(IPV6_URLS[0], timeoutMs), timeoutMs + 1000).then(parseTrace),
+  ])
+  const trace = cf.status === 'fulfilled' ? cf.value : { ip: '', loc: '' }
+  const ipv6 = v6.status === 'fulfilled' && net.isIPv6(v6.value.ip || '') ? v6.value.ip : ''
+  return {
+    kind: 'direct',
+    checkedAt: new Date().toISOString(),
+    ok: !!trace.ip,
+    ip: trace.ip || '',
+    country: trace.loc || '',
+    countryName: trace.loc ? countryName(trace.loc) : '',
+    ipv6: !!ipv6,
+  }
+}
+
 const RANK = { ok: 0, info: 0, warn: 1, fail: 2 }
 
 // Чистая функция: сырые результаты → пункты и итог с подсказками.
@@ -178,7 +203,7 @@ function evaluate({ status, mode, chatgpt, cloudflare, ipv6, dns }) {
   } else {
     const { ip, loc } = chatgpt.value
     const blocked = OPENAI_BLOCKED.has(loc)
-    items.push({ id: 'chatgpt', label: 'ChatGPT видит', status: blocked ? 'fail' : 'ok', value: countryName(loc), country: loc, detail: ip ? `IP ${ip}` : '' })
+    items.push({ id: 'chatgpt', label: 'ChatGPT видит', status: blocked ? 'fail' : 'ok', value: countryName(loc), country: loc, ip, detail: ip ? `IP ${ip}` : '' })
     if (loc === 'RU') {
       hint('ChatGPT видит Россию — его трафик идёт мимо VPN. Переподключитесь или выберите другой сервер; если не поможет — напишите в поддержку')
     } else if (blocked) {
@@ -199,7 +224,7 @@ function evaluate({ status, mode, chatgpt, cloudflare, ipv6, dns }) {
       st = 'warn'
       hint(`ChatGPT и другие сайты видят разные страны (${countryName(chatgpt.value.loc)} и ${countryName(loc)}) — выберите конкретный сервер вместо «Авто» и переподключитесь`)
     }
-    items.push({ id: 'cloudflare', label: 'Другие сайты видят', status: st, value: countryName(loc), country: loc, detail: ip ? `IP ${ip}` : '' })
+    items.push({ id: 'cloudflare', label: 'Другие сайты видят', status: st, value: countryName(loc), country: loc, ip, detail: ip ? `IP ${ip}` : '' })
   }
 
   // ── IPv6 ──
@@ -250,6 +275,7 @@ function evaluate({ status, mode, chatgpt, cloudflare, ipv6, dns }) {
 
 module.exports = {
   runConnectionCheck,
+  runDirectCheck,
   evaluate,
   parseTrace,
   countryName,

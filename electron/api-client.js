@@ -187,6 +187,29 @@ async function getConfig() {
 }
 function deleteCard() { return authed('DELETE', '/payments/card') }
 
+// ─── Устройства, ссылка подписки, способы входа, отмена ────────────────────
+// Устройства (HWID) из панели и лимит: { devices: [{ hwid, platform, model, app, updated_at }], device_limit }.
+function getDevices() { return authed('GET', '/me/devices') }
+function revokeDevice(hwid) { return authed('POST', '/me/devices/revoke', { hwid }) }
+function revokeAllDevices() { return authed('POST', '/me/devices/revoke-all') }
+// «Обновить ссылку»: старая ссылка и все устройства на ней отключаются. expected_version —
+// версия ссылки, которую видел пользователь (409, если её уже обновили). Ответ — View.
+function relink(expectedVersion) {
+  const body = Number.isInteger(expectedVersion) ? { expected_version: expectedVersion } : {}
+  return authed('POST', '/me/subscription/relink', body)
+}
+// Способы входа: { identities: [{ id, type: 'email'|'telegram', identifier, is_primary, verified }] }.
+function getIdentities() { return authed('GET', '/auth/identities') }
+function deleteIdentity(id) { return authed('DELETE', '/auth/identities/' + encodeURIComponent(id)) }
+// Отмена подписки: сразу, без возврата, привязанная карта удаляется.
+function cancelSubscription() { return authed('POST', '/me/subscription/cancel', { confirm: true }) }
+// Статус серверов (публичный): { servers: [{ name, country, status: up|down|unknown }], updated_at, stale }.
+async function getServerStatus() {
+  const resp = await requestRaw('GET', '/status/servers')
+  if (resp.status >= 400) throw new Error(errMsg(resp, 'Не удалось получить статус серверов'))
+  return resp.json
+}
+
 // ─── Оплата ───────────────────────────────────────────────────────────────
 function checkout({ tariffCode, periodId, promoCode } = {}) {
   return authed('POST', '/payments/checkout', {
@@ -249,6 +272,8 @@ module.exports = {
   isAuthed, getTokens, clearTokens, refresh,
   emailRequest, emailVerify, tgInit, tgPoll, tgVerify, deviceExchange, logout,
   getSubscription, getProfile, getTransactions, getConfig, deleteCard,
+  getDevices, revokeDevice, revokeAllDevices, relink, getIdentities, deleteIdentity,
+  cancelSubscription, getServerStatus,
   checkout, paymentStatus,
   changeOptions, changePreview, changeTariff,
   supportGet, supportCreate, supportSend,

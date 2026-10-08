@@ -63,6 +63,16 @@ contextBridge.exposeInMainWorld('api', {
   accountTransactions: () => ipcRenderer.invoke('account:transactions'),
   accountConfig: () => ipcRenderer.invoke('account:config'),
   accountDeleteCard: () => ipcRenderer.invoke('account:delete-card'),
+  accountDevices: () => ipcRenderer.invoke('account:devices'),
+  accountRevokeDevice: (hwid) => ipcRenderer.invoke('account:revoke-device', hwid),
+  accountRevokeAllDevices: () => ipcRenderer.invoke('account:revoke-all-devices'),
+  accountRelink: (expectedVersion) => ipcRenderer.invoke('account:relink', expectedVersion),
+  accountIdentities: () => ipcRenderer.invoke('account:identities'),
+  accountUnlinkIdentity: (id) => ipcRenderer.invoke('account:unlink-identity', id),
+  accountCancelSubscription: () => ipcRenderer.invoke('account:cancel-subscription'),
+  serverStatus: () => ipcRenderer.invoke('status:servers'),
+  getNewsRead: () => ipcRenderer.invoke('news:get-read'),
+  setNewsRead: (ids) => ipcRenderer.invoke('news:set-read', ids),
   onAccountSubscription: (cb) => {
     ipcRenderer.on('account:subscription', (_, data) => cb(data))
     return () => ipcRenderer.removeAllListeners('account:subscription')
@@ -73,6 +83,14 @@ contextBridge.exposeInMainWorld('api', {
   vpnDisconnect: () => ipcRenderer.invoke('vpn:disconnect'),
   vpnStatus: () => ipcRenderer.invoke('vpn:status'),
   vpnCheckConnection: () => ipcRenderer.invoke('vpn:check-connection'),
+  // Статистика сессии (скорость, пинг, итоги дня и недели) и «что видят сайты»
+  vpnStats: () => ipcRenderer.invoke('vpn:stats'),
+  vpnLastCheck: () => ipcRenderer.invoke('vpn:last-check'),
+  onCheckResult: (cb) => {
+    const h = (_, data) => cb(data)
+    ipcRenderer.on('vpn:check-result', h)
+    return () => ipcRenderer.removeListener('vpn:check-result', h)
+  },
   onVpnStatus: (cb) => {
     ipcRenderer.on('vpn:status-update', (_, data) => cb(data))
     return () => ipcRenderer.removeAllListeners('vpn:status-update')
@@ -124,6 +142,8 @@ contextBridge.exposeInMainWorld('api', {
   getAutoConnect:       ()       => ipcRenderer.invoke('settings:get-auto-connect'),
   setAutoConnect:       (v)      => ipcRenderer.invoke('settings:set-auto-connect', v),
   getTunMode:           ()       => ipcRenderer.invoke('settings:get-tun-mode'),
+  getNotifications:     ()       => ipcRenderer.invoke('settings:get-notifications'),
+  setNotifications:     (v)      => ipcRenderer.invoke('settings:set-notifications', v),
   setTunMode:           (v)      => ipcRenderer.invoke('settings:set-tun-mode', v),
   flushDns:             ()       => ipcRenderer.invoke('settings:flush-dns'),
   resetDns:             ()       => ipcRenderer.invoke('settings:reset-dns'),
