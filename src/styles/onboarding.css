@@ -234,7 +234,7 @@
 .onb-stats > li > span { font-size: 12px; font-weight: 600; line-height: 16px; color: var(--c-text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .onb-stat-ico { color: var(--st-accent); }
 .onb-stat-flags { display: inline-flex; }
-.onb-stat-flags .ui-flag { box-shadow: 0 0 0 2px var(--c-bg); }
+.onb-stat-flags .ui-flag { box-shadow: var(--flag-ring), 0 0 0 2px var(--c-bg); }
 .onb-stat-flags .ui-flag + .ui-flag { margin-left: -5px; }
 
 /* ─── Правая половина ────────────────────────────────────────────────────── */
