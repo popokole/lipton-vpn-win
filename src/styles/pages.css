@@ -538,6 +538,7 @@ button.bt:active { transform: scale(0.99); }
 .page--servers .page-head-row,
 .page--news .page-head-row { min-height: 40px; margin-bottom: 16px; }
 .srv-ping-btn { height: 36px; padding: 0 14px 0 12px; gap: 6px; }
+.srv-head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .srv-ping-btn svg { color: var(--st-dot); }
 
 .srv-grid {

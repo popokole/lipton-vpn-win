@@ -75,6 +75,7 @@ export default function App() {
   const [activeServerId, setActiveServerId] = useState(null)
   const [subscriptions, setSubscriptions] = useState([])
   const [pinging, setPinging] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [version, setVersion] = useState('')
   const [loading, setLoading] = useState(true)
   const [authed, setAuthed] = useState(null)
@@ -327,6 +328,33 @@ export default function App() {
     setPinging(false)
   }, [pinging, subscriptions])
 
+  // «Обновить серверы»: заново тянем подписку (из аккаунта — как при входе,
+  // добавленные вручную — по своей ссылке), затем перепроверяем пинг. Список
+  // придёт событием sub:updated, активный сервер сохраняется, если он остался.
+  const handleRefreshServers = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      const manual = subscriptions.filter(s => !s.managed && s.url)
+      const [acc, ...rest] = await Promise.all([
+        authed ? window.api.accountSync() : Promise.resolve({ success: true }),
+        ...manual.map(s => window.api.subRefresh(s.id)),
+      ])
+      const ok = acc?.success !== false && rest.every(r => r?.success !== false)
+      if (ok) {
+        addToast('Список серверов обновлён', 'success')
+        const fresh = await window.api.subList()
+        setPinging(true)
+        await Promise.all((fresh || []).map(sub => window.api.subPing(sub.id)))
+        setPinging(false)
+      } else {
+        addToast('Не удалось обновить серверы. Проверьте интернет и попробуйте ещё раз', 'error')
+      }
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshing, subscriptions, authed, addToast])
+
   // Навигация
   const go = useCallback(page => dispatch({ type: 'go', page }), [])
   const open = useCallback((screen, params) => dispatch({ type: 'open', screen, params }), [])
@@ -528,6 +556,8 @@ export default function App() {
         exposure={exposure}
         onSelect={handleSelectServer}
         onPingAll={handlePingAll}
+        onRefresh={handleRefreshServers}
+        refreshing={refreshing}
         onBuyBypass={authed ? () => openBilling({ prefer: 'bypass' }) : null}
         onEmpty={() => openBilling()}
         emptyLabel={authed ? 'Оформить подписку' : 'Создать аккаунт'}

@@ -139,8 +139,8 @@ function Group({ title, chip, hint, children }) {
 }
 
 export default function ServersPage({
-  servers, activeServerId, activeServer, vpnStatus, pinging, plan, offer, stats, exposure,
-  onSelect, onPingAll, onBuyBypass, onEmpty, emptyLabel,
+  servers, activeServerId, activeServer, vpnStatus, pinging, refreshing, plan, offer, stats, exposure,
+  onSelect, onPingAll, onRefresh, onBuyBypass, onEmpty, emptyLabel,
 }) {
   const on = vpnStatus === 'connected' || vpnStatus === 'reconnecting'
   const bypassPlan = !!plan?.bypass
@@ -159,16 +159,31 @@ export default function ServersPage({
             : vpnStatus === 'connecting' ? <span>Подключение…</span> : <span>Не подключено</span>}
         </span>
       </div>
-      <Button
-        variant="glass"
-        size="sm"
-        className="srv-ping-btn"
-        icon={pinging ? <span className="ui-spinner ui-spinner--sm" aria-hidden="true" /> : <Icon name="pulse" size={16} stroke={1.8} />}
-        onClick={onPingAll}
-        disabled={pinging || !servers.length}
-      >
-        {pinging ? 'Проверяем…' : 'Проверить пинг'}
-      </Button>
+      <div className="srv-head-actions">
+        {onRefresh && (
+          <Button
+            variant="glass"
+            size="sm"
+            className="srv-ping-btn"
+            icon={refreshing ? <span className="ui-spinner ui-spinner--sm" aria-hidden="true" /> : <Icon name="refresh" size={16} stroke={1.8} />}
+            onClick={onRefresh}
+            disabled={refreshing}
+            title="Заново загрузить список серверов из подписки"
+          >
+            {refreshing ? 'Обновляем…' : 'Обновить'}
+          </Button>
+        )}
+        <Button
+          variant="glass"
+          size="sm"
+          className="srv-ping-btn"
+          icon={pinging ? <span className="ui-spinner ui-spinner--sm" aria-hidden="true" /> : <Icon name="pulse" size={16} stroke={1.8} />}
+          onClick={onPingAll}
+          disabled={pinging || refreshing || !servers.length}
+        >
+          {pinging ? 'Проверяем…' : 'Проверить пинг'}
+        </Button>
+      </div>
     </div>
   )
 
