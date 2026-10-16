@@ -737,7 +737,12 @@ async function cleanupStale({ dataDir, killSwitch = false, httpPort = 10809 } = 
     try { execFileSync('route', ['delete', net0, 'mask', '128.0.0.0', '10.0.0.1'], { stdio: 'ignore', windowsHide: true, timeout: 3000 }) } catch {}
   }
 
-  if (!killSwitch && ourProxyActive()) {
+  // Наш прокси от прошлого запуска снимаем всегда, даже при включённом Kill
+  // Switch: ядра сейчас нет, и прокси на 127.0.0.1 (или «блокирующий» :1)
+  // просто оставляет человека без интернета — а если он к тому же вышел из
+  // аккаунта, то и без способа подключиться. Защита вернётся при подключении.
+  void killSwitch
+  if (ourProxyActive()) {
     systemProxy.clearProxy()
     console.log('[VPN] Снят системный прокси, оставшийся от прошлого запуска')
   }

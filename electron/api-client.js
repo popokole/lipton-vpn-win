@@ -23,7 +23,15 @@ function setTokens(pair) {
   })
 }
 
-function clearTokens() { settingsManager.set('auth', null) }
+let sessionExpiredHandler = null
+// onSessionExpired — сервер отклонил сессию (токены стёрты). main отпускает сеть
+// (Kill Switch), чтобы человек мог войти заново, а не остался без интернета.
+function onSessionExpired(fn) { sessionExpiredHandler = fn }
+
+function clearTokens() {
+  settingsManager.set('auth', null)
+  try { sessionExpiredHandler?.() } catch {}
+}
 
 function isAuthed() {
   const t = getTokens()
@@ -378,4 +386,5 @@ module.exports = {
   emailChangeRequest, emailChange, promoValidate, supportFeedback, supportOperator,
   getArticles, getArticle, getFaq,
   onNetworkError,
+  onSessionExpired,
 }

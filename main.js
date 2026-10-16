@@ -1794,6 +1794,14 @@ app.whenReady().then(async () => {
   // Запрос к API не прошёл (сеть/таймаут) при «подключено» — проверить туннель.
   apiClient.onNetworkError(() => vpnManager.checkTunnel())
 
+  // Сервер завершил сессию. Если VPN не подключён, но Kill Switch держит
+  // блокировку, отпускаем сеть — иначе вход заново невозможен (нет интернета).
+  apiClient.onSessionExpired(() => {
+    if (vpnManager.getStatus() !== 'connected') {
+      vpnManager.disconnect().catch(e => console.warn('[Auth] Снятие блокировки:', e.message))
+    }
+  })
+
   // Init kill switch from saved settings
   vpnManager.setKillSwitch(settingsManager.get('killSwitch') === true)
 

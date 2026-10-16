@@ -7,6 +7,10 @@ const { DEFAULT_THEME } = require('./window-state')
 // делила настройки/токены с установленной версией.
 const DATA_DIR = process.env.LIPTON_DATA_DIR || path.join(os.homedir(), 'AppData', 'Local', 'LiptonVPN')
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
+// Копия последнего удачно прочитанного/записанного файла: если основной побился
+// (обрыв записи при обновлении, антивирус держит файл), берём её, а не «пустые»
+// настройки — иначе вход в аккаунт и подписки терялись после обновления.
+const BACKUP_FILE = SETTINGS_FILE + '.bak'
 
 const DEFAULTS = {
   firstLaunch: true,
@@ -33,15 +37,64 @@ function ensure() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
 }
 
+// Синхронная короткая пауза между попытками чтения (файл держит антивирус
+// или установщик сразу после обновления).
+function pauseSync(ms) {
+  try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } catch {}
+}
+
+function readJson(file) {
+  const raw = fs.readFileSync(file, 'utf-8')
+  const data = JSON.parse(raw)
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('settings: не объект')
+  return data
+}
+
+// readStored — сохранённые настройки: основной файл (до 3 попыток), иначе
+// резервная копия. ok=false — ни то ни другое не прочиталось, но файл есть:
+// тогда запись не должна молча затирать его «пустыми» настройками.
+function readStored() {
+  const exists = fs.existsSync(SETTINGS_FILE)
+  if (exists) {
+    for (let i = 0; i < 3; i++) {
+      try { return { data: readJson(SETTINGS_FILE), ok: true } } catch (e) {
+        if (i === 2) console.error('[settings] settings.json не прочитан:', e.message)
+        else pauseSync(120)
+      }
+    }
+  }
+  try {
+    if (fs.existsSync(BACKUP_FILE)) {
+      const data = readJson(BACKUP_FILE)
+      if (exists) console.warn('[settings] взята резервная копия settings.json.bak')
+      return { data, ok: true }
+    }
+  } catch (e) {
+    console.error('[settings] settings.json.bak не прочитан:', e.message)
+  }
+  return { data: {}, ok: !exists }
+}
+
+// Атомарная запись: во временный файл, затем переименование поверх. Обрыв
+// посреди записи (установщик обновления убил процесс) больше не оставляет
+// обрезанный JSON. Удачная запись обновляет и резервную копию.
+function writeStored(data) {
+  const json = JSON.stringify(data, null, 2)
+  const tmp = SETTINGS_FILE + '.tmp'
+  fs.writeFileSync(tmp, json, 'utf-8')
+  try {
+    fs.renameSync(tmp, SETTINGS_FILE)
+  } catch {
+    // Windows: целевой файл занят — пишем напрямую (как раньше).
+    fs.writeFileSync(SETTINGS_FILE, json, 'utf-8')
+    try { fs.unlinkSync(tmp) } catch {}
+  }
+  try { fs.writeFileSync(BACKUP_FILE, json, 'utf-8') } catch {}
+}
+
 function getAll() {
   ensure()
-  try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8')
-      return { ...DEFAULTS, ...JSON.parse(raw) }
-    }
-  } catch {}
-  return { ...DEFAULTS }
+  return { ...DEFAULTS, ...readStored().data }
 }
 
 function get(key) {
@@ -50,9 +103,14 @@ function get(key) {
 
 function set(key, value) {
   ensure()
-  const current = getAll()
-  current[key] = value
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(current, null, 2), 'utf-8')
+  const { data, ok } = readStored()
+  if (!ok) {
+    // Ни основной файл, ни копия не читаются: не перезаписываем — иначе
+    // затрём токены входа и подписки настройками по умолчанию.
+    console.error(`[settings] запись «${key}» пропущена: settings.json недоступен`)
+    return
+  }
+  writeStored({ ...DEFAULTS, ...data, [key]: value })
 }
 
 // Одноразовые миграции при обновлении. Возвращает список применённых.
@@ -78,7 +136,7 @@ function migrate() {
     applied.push('tunMode→true')
   }
   raw.settingsVersion = SETTINGS_VERSION
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ ...DEFAULTS, ...raw }, null, 2), 'utf-8')
+  writeStored({ ...DEFAULTS, ...raw })
   return applied
 }
 
