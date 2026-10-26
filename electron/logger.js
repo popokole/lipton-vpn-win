@@ -8,10 +8,32 @@ const entries = []
 const LOG_DIR = path.join(os.homedir(), 'AppData', 'Local', 'LiptonVPN')
 const LOG_FILE = path.join(LOG_DIR, 'app.log')
 
+// Ротация: при 5 МБ текущий файл становится app.log.1 (прежний .1 удаляется).
+// Итого на диске не больше ~10 МБ логов.
+const MAX_FILE_BYTES = 5 * 1024 * 1024
+const OLD_FILE = LOG_FILE + '.1'
+
 try { fs.mkdirSync(LOG_DIR, { recursive: true }) } catch {}
 
+let fileBytes = 0
+try { fileBytes = fs.statSync(LOG_FILE).size } catch {}
+
+function rotate() {
+  try { fs.rmSync(OLD_FILE, { force: true }) } catch {}
+  try { fs.renameSync(LOG_FILE, OLD_FILE) } catch {
+    // переименовать не вышло (файл держат) — просто начинаем заново
+    try { fs.writeFileSync(LOG_FILE, '', 'utf-8') } catch {}
+  }
+  fileBytes = 0
+}
+
 function writeToFile(line) {
-  try { fs.appendFileSync(LOG_FILE, line + '\n', 'utf-8') } catch {}
+  if (fileBytes >= MAX_FILE_BYTES) rotate()
+  const data = line + '\n'
+  try {
+    fs.appendFileSync(LOG_FILE, data, 'utf-8')
+    fileBytes += Buffer.byteLength(data, 'utf-8')
+  } catch {}
 }
 
 function add(level, args) {
@@ -58,4 +80,4 @@ function verbose(...args) {
   writeToFile(`[${hms}] [VERBOSE] ${msg}`)
 }
 
-module.exports = { getLogs, clearLogs, getLogFilePath, verbose }
+module.exports = { getLogs, clearLogs, getLogFilePath, verbose, _internal: { MAX_FILE_BYTES, OLD_FILE } }

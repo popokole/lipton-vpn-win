@@ -72,10 +72,12 @@ function complement(ranges, v6) {
 }
 
 const ALLOWED_V4 = [
-  '127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',
-  '169.254.0.0/16', '224.0.0.0/4', '255.255.255.255/32',
+  '0.0.0.0/8', '127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',
+  '169.254.0.0/16', '224.0.0.0/4', '240.0.0.0/4',
 ]
-const ALLOWED_V6 = ['::1/128', 'fe80::/10', 'fc00::/7', 'ff00::/8']
+// «::» (неуказанный адрес) netsh одиночным адресом не принимает — не блокируем,
+// как и петлю, link-local, ULA и multicast.
+const ALLOWED_V6 = ['::/127', 'fe80::/10', 'fc00::/7', 'ff00::/8']
 
 /**
  * Список адресов для блокирующего правила (remoteip у netsh).
@@ -153,7 +155,10 @@ async function apply(allowIps, enabled) {
   const r = await run(addArgs(remote, enabled))
   exists = r.ok
   listKey = r.ok ? remote : ''
-  if (!r.ok) console.error('[KillSwitch] Не удалось создать правило брандмауэра:', r.err?.message || r.out)
+  if (!r.ok) {
+    const why = (r.out || '').trim() || (r.err?.message || '').split('\n')[0]
+    console.error(`[KillSwitch] Не удалось создать правило брандмауэра (адресов: ${remote.split(',').length}): ${why}`)
+  }
   return r.ok
 }
 
