@@ -47,7 +47,12 @@ function notifyNetworkError() {
   try { networkErrorHandler?.() } catch {}
 }
 
-function requestRaw(method, path, { body, token } = {}) {
+// Ответ ИИ (особенно разбор логов) идёт 10–25 с: на 20 с приложение обрывало
+// запрос (сервер видел «context canceled» и отдавал 502), а обрыв ещё и считался
+// сбоем сети — запускал проверку туннеля.
+const AI_TIMEOUT_MS = 90000
+
+function requestRaw(method, path, { body, token, timeout = 20000, slow = false } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(API_BASE + path)
     const payload = body !== undefined ? JSON.stringify(body) : null
@@ -69,7 +74,7 @@ function requestRaw(method, path, { body, token } = {}) {
       path: u.pathname + u.search,
       method,
       headers,
-      timeout: 20000,
+      timeout,
     }, (res) => {
       let data = ''
       res.on('data', c => data += c)
@@ -80,7 +85,12 @@ function requestRaw(method, path, { body, token } = {}) {
       })
     })
     req.on('error', e => { notifyNetworkError(); reject(e) })
-    req.on('timeout', () => { req.destroy(); notifyNetworkError(); reject(new Error('Таймаут запроса')) })
+    req.on('timeout', () => {
+      req.destroy()
+      // Долгий ответ ИИ — не признак сломанного туннеля.
+      if (!slow) notifyNetworkError()
+      reject(new Error('Таймаут запроса'))
+    })
     if (payload) req.write(payload)
     req.end()
   })
@@ -130,12 +140,12 @@ function refresh() {
 }
 
 // authed выполняет запрос с Bearer и одной попыткой refresh при 401.
-async function authed(method, path, body, _retry = false) {
+async function authed(method, path, body, opts = {}, _retry = false) {
   const t = getTokens()
-  const resp = await requestRaw(method, path, { body, token: t?.access })
+  const resp = await requestRaw(method, path, { body, token: t?.access, ...opts })
   if (resp.status === 401 && !_retry) {
     const r = await refresh()
-    if (r.ok) return authed(method, path, body, true)
+    if (r.ok) return authed(method, path, body, opts, true)
     if (r.invalid) clearTokens() // только реальный отказ токена рвёт сессию
     throw Object.assign(new Error('Сессия истекла, войдите снова'), { code: 'unauthorized', status: 401 })
   }
@@ -290,10 +300,10 @@ function supportSend(body) { return authed('POST', '/support/messages', { body }
 // Тот же диалог, что и на сайте (таблица ai_dialogs): ИИ отвечает, оператор
 // перехватывает вручную. Так чат в приложении и на сайте — общий.
 function getAiDialog() { return authed('GET', '/support/ai/dialog') }
-function aiChat(message) { return authed('POST', '/support/ai', { message }) }
+function aiChat(message) { return authed('POST', '/support/ai', { message }, { timeout: AI_TIMEOUT_MS, slow: true }) }
 // Логи уходят В ЧАТ: пользователь увидит «📎 отправлены логи», а ИИ/оператор —
 // полную расшифровку (сервер прячет её в detail).
-function sendLogs(logs, note) { return authed('POST', '/support/ai/logs', { logs, note }) }
+function sendLogs(logs, note) { return authed('POST', '/support/ai/logs', { logs, note }, { timeout: AI_TIMEOUT_MS, slow: true }) }
 
 // ─── Пробный доступ ─────────────────────────────────────────────────────────
 // Гость без аккаунта: 15 минут раз в сутки на устройство (device_id — HWID
