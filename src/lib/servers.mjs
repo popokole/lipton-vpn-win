@@ -46,6 +46,22 @@ export function splitRemark(remark) {
   return { title: parts[0], sub: parts.slice(1).join(' · ') }
 }
 
+// Серверы, которые бэкенд (GET /status/servers) отметил «down», в списке не
+// показываем; сопоставление — по названию без флага. «unknown», нет статуса
+// или он устарел (stale) — показываем: не знаем — не прячем. Выбранный сервер
+// оставляем, чтобы не потерять отметку; если спрятать пришлось бы всё — всё и показываем.
+export function hideOffline(servers, status, keepId) {
+  const list = Array.isArray(servers) ? servers : []
+  if (!status || status.stale || !Array.isArray(status.servers)) return list
+  const down = new Set(status.servers
+    .filter(s => s && s.status === 'down')
+    .map(s => String(s.name || '').trim().toLowerCase())
+    .filter(Boolean))
+  if (!down.size) return list
+  const visible = list.filter(s => s.id === keepId || !down.has(splitRemark(s.remark).title.toLowerCase()))
+  return visible.length ? visible : list
+}
+
 // Подпись по пингу: «низкий пинг» / «стабильный» / «высокий пинг».
 export function pingTag(ms) {
   if (ms == null) return { label: 'пинг не измерен', tone: 'muted' }

@@ -25,7 +25,7 @@ import PrivacyScreen from './screens/PrivacyScreen'
 import { Aurora } from './components/ui'
 import { navReducer, initialNav, topScreen } from './lib/nav.mjs'
 import { planSummary, glowPalette, bypassOffer, cheapestMonthly } from './lib/plan.mjs'
-import { flattenServers } from './lib/servers.mjs'
+import { flattenServers, hideOffline } from './lib/servers.mjs'
 import { exposureView } from './lib/stats.mjs'
 import { unreadKeys, markRead } from './lib/news.mjs'
 import { guestView, trialMinutes, serverTrialEnabled, retryLabel } from './lib/guest.mjs'
@@ -284,6 +284,22 @@ export default function App() {
   const allServers = useMemo(() => flattenServers(subscriptions), [subscriptions])
   const activeServer = allServers.find(s => s.id === activeServerId)
 
+  // Статус серверов с бэкенда — офлайн-серверы прячем из списка и не берём «первым».
+  const [serverStatus, setServerStatus] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const load = () => window.api?.serverStatus?.()
+      .then(r => { if (alive) setServerStatus(r?.success ? r : null) })
+      .catch(() => {})
+    load()
+    const id = setInterval(load, 120000)
+    return () => { alive = false; clearInterval(id) }
+  }, [])
+  const visibleServers = useMemo(
+    () => hideOffline(allServers, serverStatus, activeServerId),
+    [allServers, serverStatus, activeServerId],
+  )
+
   const handleConnect = useCallback(async () => {
     if (vpnStatus === 'connecting' || vpnStatus === 'disconnecting') return
     if (vpnStatus === 'connected' || vpnStatus === 'reconnecting') {
@@ -291,7 +307,7 @@ export default function App() {
       await window.api.vpnDisconnect()
       return
     }
-    const targetId = activeServerId || allServers[0]?.id
+    const targetId = activeServerId || visibleServers[0]?.id
     if (!targetId) return
     setVpnStatus('connecting')
     const result = await window.api.vpnConnect(targetId)
@@ -300,7 +316,7 @@ export default function App() {
       setConnectError(result.error || 'Неизвестная ошибка')
       setTimeout(() => { setVpnStatus('disconnected'); setConnectError(null) }, 5000)
     }
-  }, [vpnStatus, activeServerId, allServers])
+  }, [vpnStatus, activeServerId, visibleServers])
 
   const handleSelectServer = useCallback(async (serverId) => {
     setActiveServerId(serverId)
@@ -494,7 +510,7 @@ export default function App() {
 
   // Кнопка без серверов: вошедшим — «Оформить подписку» и «15 минут бесплатно»
   // (если сервер их выдаёт и сегодня ещё не брали) или «Ввести промокод».
-  const heroServer = activeServer || allServers[0] || null
+  const heroServer = activeServer || visibleServers[0] || null
   const dailyRetry = daily.retryAt && daily.retryAt > now ? daily.retryAt : null
   const dailyOk = !!authed && serverTrialEnabled(config) && !daily.unsupported && !dailyRetry
   let heroCta = null
@@ -545,7 +561,7 @@ export default function App() {
   } else if (nav.page === 'servers') {
     pageEl = (
       <ServersPage
-        servers={allServers}
+        servers={visibleServers}
         activeServerId={activeServerId}
         activeServer={activeServer}
         vpnStatus={vpnStatus}
@@ -626,7 +642,7 @@ export default function App() {
           tunMode: vpnPrefs.tunMode,
           bypassRu: vpnPrefs.bypassRu,
           server: heroServer,
-          serversCount: allServers.length,
+          serversCount: visibleServers.length,
           error: connectError,
           ip: exposure.ip,
           cta: heroCta,

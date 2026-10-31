@@ -10,6 +10,8 @@
 // его остаётся включить одной синхронной командой.
 
 const { execFile, execFileSync } = require('child_process')
+// Если Брандмауэр Windows недоступен (служба отключена) — те же операции маршрутами.
+const routes = require('./route-guard')
 
 const RULE_NAME = 'LiptonVPN Kill Switch'
 
@@ -128,6 +130,18 @@ let active = false   // правило включено (трафик мимо V
 let exists = false   // правило создано этим процессом
 let listKey = ''     // remoteip, с которым создано правило
 
+// 'firewall' — правило Брандмауэра; 'routes' — правило не создаётся (служба
+// mpssvc отключена и т.п.), до конца сеанса работаем маршрутами (route-guard).
+let backend = 'firewall'
+
+function useRoutes() {
+  if (backend === 'routes') return
+  backend = 'routes'
+  exists = false
+  listKey = ''
+  console.warn('[KillSwitch] Брандмауэр Windows недоступен — блокировка через маршруты')
+}
+
 let queue = Promise.resolve()
 function enqueue(fn) {
   const p = queue.then(fn, fn)
@@ -164,13 +178,21 @@ async function apply(allowIps, enabled) {
 
 /** Создать правило заранее, выключенным (или обновить список, не меняя состояние). */
 function prepare(allowIps = []) {
-  return enqueue(async () => apply(allowIps, active))
+  return enqueue(async () => {
+    if (backend === 'firewall' && await apply(allowIps, active)) return true
+    useRoutes()
+    return routes.prepare(allowIps)
+  })
 }
 
 /** Включить блокировку трафика мимо VPN. */
 function enable(allowIps = []) {
   return enqueue(async () => {
-    const ok = await apply(allowIps, true)
+    let ok = backend === 'firewall' && await apply(allowIps, true)
+    if (!ok) {
+      useRoutes()
+      ok = await routes.enable(allowIps)
+    }
     if (ok && !active) console.log(`[KillSwitch] Блокировка трафика мимо VPN включена (разрешено: ${allowIps.join(', ') || '—'})`)
     active = ok || active
     return ok
@@ -180,9 +202,14 @@ function enable(allowIps = []) {
 /** Выключить блокировку, оставив правило (ядро снова защищает трафик). */
 function disable() {
   return enqueue(async () => {
+    if (backend === 'routes') {
+      if (active) { await routes.disable(); console.log('[KillSwitch] Блокировка трафика снята') }
+      active = false
+      return true
+    }
     if (!exists) { active = false; return true }
     if (!active) return true // правило уже выключено (создано через prepare)
-    const r =await run(['advfirewall', 'firewall', 'set', 'rule', RULE, 'new', 'enable=no'])
+    const r = await run(['advfirewall', 'firewall', 'set', 'rule', RULE, 'new', 'enable=no'])
     if (!r.ok) {
       await run(['advfirewall', 'firewall', 'delete', 'rule', RULE])
       exists = false
@@ -198,6 +225,7 @@ function disable() {
 function remove() {
   return enqueue(async () => {
     const r = await run(['advfirewall', 'firewall', 'delete', 'rule', RULE])
+    if (backend === 'routes' || routes.isActive()) await routes.disable()
     if (active) console.log('[KillSwitch] Блокировка трафика снята')
     else if (r.ok && exists) console.log('[KillSwitch] Правило брандмауэра удалено')
     active = false
@@ -210,13 +238,17 @@ function remove() {
 // Синхронно, одной командой — первым делом при падении ядра в TUN, пока
 // strict_route и маршруты Wintun уже исчезли, а новое ядро ещё не поднято.
 function enableSync(allowIps = []) {
-  let ok = exists && runSync(['advfirewall', 'firewall', 'set', 'rule', RULE, 'new', 'enable=yes'])
-  if (!ok) {
+  let ok = backend === 'routes' ? routes.enableSync(allowIps) : exists && runSync(['advfirewall', 'firewall', 'set', 'rule', RULE, 'new', 'enable=yes'])
+  if (!ok && backend === 'firewall') {
     const remote = buildBlockList(allowIps).join(',')
     runSync(['advfirewall', 'firewall', 'delete', 'rule', RULE])
     ok = runSync(addArgs(remote, true))
     exists = ok
     listKey = ok ? remote : ''
+    if (!ok) {
+      useRoutes()
+      ok = routes.enableSync(allowIps)
+    }
   }
   if (ok) {
     active = true
@@ -230,6 +262,7 @@ function enableSync(allowIps = []) {
 // Синхронно — для аварийного выхода процесса и очистки при старте: удаляет правило.
 function disableSync() {
   runSync(['advfirewall', 'firewall', 'delete', 'rule', RULE])
+  routes.disableSync() // в т.ч. маршруты, оставшиеся после падения приложения
   active = false
   exists = false
   listKey = ''

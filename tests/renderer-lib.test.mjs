@@ -7,7 +7,7 @@ import { navReducer, initialNav, topScreen, PAGES } from '../src/lib/nav.mjs'
 import {
   planSummary, glowPalette, connectionLabel, guessPeriodDays, daysWord, fmtClock, fmtMinSec, isBypassTariff,
 } from '../src/lib/plan.mjs'
-import { flagCode, cleanRemark, flattenServers } from '../src/lib/servers.mjs'
+import { flagCode, cleanRemark, flattenServers, hideOffline } from '../src/lib/servers.mjs'
 
 const DAY = 24 * 60 * 60 * 1000
 const NOW = Date.UTC(2026, 9, 8, 12, 0, 0)
@@ -136,4 +136,27 @@ test('servers: флаг и название без эмодзи', () => {
   assert.equal(cleanRemark('🇩🇪'), '🇩🇪')
   const all = flattenServers([{ id: 's1', isTrial: true, servers: [{ id: 'a' }] }, { id: 's2', servers: [{ id: 'b' }, { id: 'c' }] }, null])
   assert.deepEqual(all.map(s => [s.id, s.subId, !!s.isTrial]), [['a', 's1', true], ['b', 's2', false], ['c', 's2', false]])
+})
+
+test('servers: офлайн-серверы (status=down) не показываем', () => {
+  const list = [
+    { id: 'a', remark: '🇩🇪 Германия' },
+    { id: 'b', remark: '🇵🇱 Польша №2' },
+    { id: 'c', remark: '🇳🇱 Нидерланды · Амстердам' },
+    { id: 'd', remark: 'Обход Глушилок' },
+  ]
+  const status = { servers: [
+    { name: 'Германия', status: 'up' },
+    { name: 'Польша №2', status: 'down' },
+    { name: 'Нидерланды', status: 'down' },
+    { name: 'Обход Глушилок', status: 'unknown' },
+  ] }
+  assert.deepEqual(hideOffline(list, status).map(s => s.id), ['a', 'd'])
+  // выбранный сервер не прячем, даже если он офлайн
+  assert.deepEqual(hideOffline(list, status, 'b').map(s => s.id), ['a', 'b', 'd'])
+  // нет статуса, он устарел или «down» все — показываем как есть
+  assert.equal(hideOffline(list, null).length, 4)
+  assert.equal(hideOffline(list, { ...status, stale: true }).length, 4)
+  const allDown = { servers: list.map(s => ({ name: cleanRemark(s.remark).split(' · ')[0], status: 'down' })) }
+  assert.equal(hideOffline(list, allDown).length, 4)
 })
