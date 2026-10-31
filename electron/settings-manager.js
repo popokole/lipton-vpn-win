@@ -43,6 +43,10 @@ function pauseSync(ms) {
   try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms) } catch {}
 }
 
+// Ошибки доступа: файл держит антивирус/установщик — данные целы, просто подождём.
+// Любая другая ошибка чтения JSON значит, что внутри мусор.
+const LOCK_CODES = new Set(['EBUSY', 'EPERM', 'EACCES'])
+
 function readJson(file) {
   const raw = fs.readFileSync(file, 'utf-8')
   const data = JSON.parse(raw)
@@ -50,46 +54,87 @@ function readJson(file) {
   return data
 }
 
+// getAll() дёргается по таймерам — одну и ту же ошибку пишем в лог один раз.
+const reported = new Set()
+function reportOnce(level, msg) {
+  if (reported.has(msg)) return
+  reported.add(msg)
+  console[level](msg)
+}
+
+// Битый файл не удаляем, а откладываем рядом — вдруг понадобится восстановить вручную.
+function quarantine(file) {
+  try { if (fs.existsSync(file)) fs.renameSync(file, `${file}.corrupt-${Date.now()}`) } catch {}
+}
+
 // readStored — сохранённые настройки: основной файл (до 3 попыток), иначе
-// резервная копия. ok=false — ни то ни другое не прочиталось, но файл есть:
-// тогда запись не должна молча затирать его «пустыми» настройками.
+// резервная копия. ok=false — файл занят: запись не должна молча затирать
+// его «пустыми» настройками. Если же оба файла прочитались, но внутри мусор
+// (обрыв записи оставляет нули вместо JSON), данных там уже нет: откладываем
+// их в *.corrupt-* и начинаем с умолчаний — иначе приложение навсегда
+// застревало без возможности сохранить вход и настройки.
 function readStored() {
   const exists = fs.existsSync(SETTINGS_FILE)
+  let locked = false
   if (exists) {
     for (let i = 0; i < 3; i++) {
-      try { return { data: readJson(SETTINGS_FILE), ok: true } } catch (e) {
-        if (i === 2) console.error('[settings] settings.json не прочитан:', e.message)
-        else pauseSync(120)
+      try {
+        const data = readJson(SETTINGS_FILE)
+        reported.clear()
+        return { data, ok: true }
+      } catch (e) {
+        if (i === 2) {
+          locked = LOCK_CODES.has(e.code)
+          reportOnce('error', `[settings] settings.json не прочитан: ${e.message}`)
+        } else pauseSync(120)
       }
     }
   }
-  try {
-    if (fs.existsSync(BACKUP_FILE)) {
+  const backupExists = fs.existsSync(BACKUP_FILE)
+  if (backupExists) {
+    try {
       const data = readJson(BACKUP_FILE)
-      if (exists) console.warn('[settings] взята резервная копия settings.json.bak')
+      if (exists) reportOnce('warn', '[settings] взята резервная копия settings.json.bak')
       return { data, ok: true }
+    } catch (e) {
+      if (LOCK_CODES.has(e.code)) locked = true
+      reportOnce('error', `[settings] settings.json.bak не прочитан: ${e.message}`)
     }
-  } catch (e) {
-    console.error('[settings] settings.json.bak не прочитан:', e.message)
   }
-  return { data: {}, ok: !exists }
+  if (!exists) return { data: {}, ok: true }
+  if (locked) return { data: {}, ok: false }
+  quarantine(SETTINGS_FILE)
+  if (backupExists) quarantine(BACKUP_FILE)
+  console.error('[settings] settings.json и копия повреждены — отложены в *.corrupt-*, настройки по умолчанию')
+  return { data: {}, ok: true }
 }
 
-// Атомарная запись: во временный файл, затем переименование поверх. Обрыв
-// посреди записи (установщик обновления убил процесс) больше не оставляет
-// обрезанный JSON. Удачная запись обновляет и резервную копию.
-function writeStored(data) {
-  const json = JSON.stringify(data, null, 2)
-  const tmp = SETTINGS_FILE + '.tmp'
-  fs.writeFileSync(tmp, json, 'utf-8')
+// Атомарная запись: во временный файл с fsync, затем переименование поверх.
+// Без fsync выключение ПК сразу после записи оставляло файл нужного размера,
+// забитый нулями, — и основной, и копию сразу.
+function atomicWrite(file, json) {
+  const tmp = file + '.tmp'
+  const fd = fs.openSync(tmp, 'w')
   try {
-    fs.renameSync(tmp, SETTINGS_FILE)
+    fs.writeSync(fd, json, null, 'utf-8')
+    fs.fsyncSync(fd)
+  } finally {
+    fs.closeSync(fd)
+  }
+  try {
+    fs.renameSync(tmp, file)
   } catch {
     // Windows: целевой файл занят — пишем напрямую (как раньше).
-    fs.writeFileSync(SETTINGS_FILE, json, 'utf-8')
+    fs.writeFileSync(file, json, 'utf-8')
     try { fs.unlinkSync(tmp) } catch {}
   }
-  try { fs.writeFileSync(BACKUP_FILE, json, 'utf-8') } catch {}
+}
+
+// Удачная запись обновляет и резервную копию.
+function writeStored(data) {
+  const json = JSON.stringify(data, null, 2)
+  atomicWrite(SETTINGS_FILE, json)
+  try { atomicWrite(BACKUP_FILE, json) } catch {}
 }
 
 function getAll() {
@@ -116,13 +161,12 @@ function set(key, value) {
 // Одноразовые миграции при обновлении. Возвращает список применённых.
 function migrate() {
   ensure()
-  let raw = {}
-  try {
-    if (fs.existsSync(SETTINGS_FILE)) raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'))
-  } catch (e) {
-    // Файл не прочитался (занят антивирусом, битый) — не перезаписываем: в нём токены входа
+  // Читаем как getAll(): с резервной копией и восстановлением битого файла.
+  const { data: raw, ok } = readStored()
+  if (!ok) {
+    // Файл занят антивирусом — не перезаписываем: в нём токены входа
     // и подписки. Миграция повторится при следующем запуске.
-    console.error('[settings] миграция пропущена, settings.json не прочитан:', e.message)
+    console.error('[settings] миграция пропущена: settings.json занят')
     return []
   }
   const from = Number(raw.settingsVersion) || 1

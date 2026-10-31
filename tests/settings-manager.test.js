@@ -30,9 +30,56 @@ test('обрезанный settings.json: вход берётся из резе�
   assert.equal(saved.theme, 'dark')
 })
 
-test('оба файла битые: запись не затирает их настройками по умолчанию', () => {
+const corruptFiles = () => fs.readdirSync(dir).filter(f => f.includes('.corrupt-'))
+const clearCorrupt = () => corruptFiles().forEach(f => fs.unlinkSync(path.join(dir, f)))
+
+test('оба файла битые: откладываются в *.corrupt-*, настройки снова сохраняются', () => {
+  clearCorrupt()
   fs.writeFileSync(FILE, '{broken')
   fs.writeFileSync(FILE + '.bak', '{broken')
   sm.set('theme', 'light')
-  assert.equal(fs.readFileSync(FILE, 'utf-8'), '{broken', 'основной файл не перезаписан')
+  assert.equal(sm.get('theme'), 'light')
+  assert.equal(JSON.parse(fs.readFileSync(FILE, 'utf-8')).theme, 'light')
+  assert.equal(corruptFiles().length, 2, 'битые файлы сохранены рядом')
+})
+
+test('оба файла забиты нулями (обрыв записи при выключении ПК): приложение не застревает', () => {
+  clearCorrupt()
+  fs.writeFileSync(FILE, Buffer.alloc(9776))
+  fs.writeFileSync(FILE + '.bak', Buffer.alloc(9776))
+  assert.equal(sm.get('auth'), undefined)
+  sm.set('auth', { access: 'a', refresh: 'r3' })
+  assert.equal(sm.get('auth').refresh, 'r3')
+  assert.equal(JSON.parse(fs.readFileSync(FILE + '.bak', 'utf-8')).auth.refresh, 'r3')
+})
+
+test('миграция при битом основном файле берёт данные из резервной копии', () => {
+  sm.set('auth', { access: 'a', refresh: 'r4' })
+  const stored = JSON.parse(fs.readFileSync(FILE, 'utf-8'))
+  delete stored.settingsVersion
+  fs.writeFileSync(FILE + '.bak', JSON.stringify(stored))
+  fs.writeFileSync(FILE, Buffer.alloc(100))
+  assert.deepEqual(sm.migrate(), ['tunMode→true'])
+  const saved = JSON.parse(fs.readFileSync(FILE, 'utf-8'))
+  assert.equal(saved.auth.refresh, 'r4', 'вход не потерян')
+  assert.equal(saved.settingsVersion, sm.SETTINGS_VERSION)
+})
+
+test('файл занят антивирусом: ничего не откладывается и не перезаписывается', () => {
+  clearCorrupt()
+  sm.set('auth', { access: 'a', refresh: 'r5' })
+  const before = fs.readFileSync(FILE, 'utf-8')
+  const orig = fs.readFileSync
+  fs.readFileSync = (file, ...rest) => {
+    if (String(file).startsWith(FILE)) throw Object.assign(new Error('busy'), { code: 'EBUSY' })
+    return orig(file, ...rest)
+  }
+  try {
+    sm.set('theme', 'dark')
+    assert.deepEqual(sm.migrate(), [])
+  } finally {
+    fs.readFileSync = orig
+  }
+  assert.equal(fs.readFileSync(FILE, 'utf-8'), before, 'файл не тронут')
+  assert.equal(corruptFiles().length, 0)
 })
