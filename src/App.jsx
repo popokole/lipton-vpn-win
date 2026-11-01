@@ -25,7 +25,7 @@ import PrivacyScreen from './screens/PrivacyScreen'
 import { Aurora } from './components/ui'
 import { navReducer, initialNav, topScreen } from './lib/nav.mjs'
 import { planSummary, glowPalette, bypassOffer, cheapestMonthly } from './lib/plan.mjs'
-import { flattenServers, hideOffline } from './lib/servers.mjs'
+import { flattenServers, hideOffline, defaultServer } from './lib/servers.mjs'
 import { exposureView } from './lib/stats.mjs'
 import { unreadKeys, markRead } from './lib/news.mjs'
 import { guestView, trialMinutes, serverTrialEnabled, retryLabel } from './lib/guest.mjs'
@@ -307,7 +307,7 @@ export default function App() {
       await window.api.vpnDisconnect()
       return
     }
-    const targetId = activeServerId || visibleServers[0]?.id
+    const targetId = activeServerId || defaultServer(visibleServers)?.id
     if (!targetId) return
     setVpnStatus('connecting')
     const result = await window.api.vpnConnect(targetId)
@@ -510,7 +510,7 @@ export default function App() {
 
   // Кнопка без серверов: вошедшим — «Оформить подписку» и «15 минут бесплатно»
   // (если сервер их выдаёт и сегодня ещё не брали) или «Ввести промокод».
-  const heroServer = activeServer || visibleServers[0] || null
+  const heroServer = activeServer || defaultServer(visibleServers)
   const dailyRetry = daily.retryAt && daily.retryAt > now ? daily.retryAt : null
   const dailyOk = !!authed && serverTrialEnabled(config) && !daily.unsupported && !dailyRetry
   let heroCta = null

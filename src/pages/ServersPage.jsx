@@ -1,7 +1,7 @@
 import { Glass, Button, Icon, Dot, Flag, Signal } from '../components/ui'
 import { rub } from '../lib/plan.mjs'
 import {
-  cleanRemark, flagCode, splitRemark, pingTag, signalLevel, pingTone, serverAccent, groupServers,
+  cleanRemark, defaultServer, flagCode, splitRemark, pingTag, signalLevel, pingTone, serverAccent, groupServers,
 } from '../lib/servers.mjs'
 import { lastN, rangeHeights } from '../lib/stats.mjs'
 
@@ -146,7 +146,7 @@ export default function ServersPage({
   const bypassPlan = !!plan?.bypass
   const { auto, bypass, regular } = groupServers(servers, { bypassPlan })
   const showPromo = !!offer && plan?.kind === 'active' && !bypassPlan && !!onBuyBypass
-  const effectiveActive = activeServerId || (servers[0] && servers[0].id)
+  const effectiveActive = activeServerId || defaultServer(servers)?.id
 
   const head = (
     <div className="page-head-row">

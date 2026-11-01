@@ -1353,6 +1353,12 @@ function setupIPC() {
   })
 }
 
+// Сервер по умолчанию, если человек сам не выбирал (как defaultServer в
+// src/lib/servers.mjs): «Авто-баланс», иначе первый.
+function defaultServerOf(servers) {
+  return servers.find(s => /авто|auto|баланс|balanc/i.test(String(s.remark || ''))) || servers[0] || null
+}
+
 // ─── «Обновить ссылку»: переподключение ──────────────────────────────────────
 
 function activeServerRemark() {
@@ -1372,7 +1378,7 @@ async function reconnectAfterRelink(prevRemark) {
   if (status !== 'connected' && status !== 'reconnecting') return
   const settings = settingsManager.getAll()
   const servers = (settings.subscriptions || []).flatMap(s => s.servers || [])
-  const server = servers.find(s => s.remark === prevRemark) || servers[0]
+  const server = servers.find(s => s.remark === prevRemark) || defaultServerOf(servers)
   if (!server) {
     await vpnManager.disconnect()
     settingsManager.set('activeServerId', null)
@@ -1688,7 +1694,7 @@ async function doAutoConnect(attempt = 0) {
   const myGen = autoConnectGen
   const settings = settingsManager.getAll()
   const subs = settings.subscriptions || []
-  const serverId = settings.activeServerId || subs.flatMap(s => s.servers || [])[0]?.id
+  const serverId = settings.activeServerId || defaultServerOf(subs.flatMap(s => s.servers || []))?.id
   if (!serverId) return
 
   let server = null

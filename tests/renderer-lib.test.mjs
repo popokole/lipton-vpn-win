@@ -160,3 +160,16 @@ test('servers: офлайн-серверы (status=down) не показывае
   const allDown = { servers: list.map(s => ({ name: cleanRemark(s.remark).split(' · ')[0], status: 'down' })) }
   assert.equal(hideOffline(list, allDown).length, 4)
 })
+
+test('servers: по умолчанию «Авто-баланс», иначе самый быстрый', async () => {
+  const { defaultServer } = await import('../src/lib/servers.mjs')
+  const list = [
+    { id: 'de', remark: '🇩🇪 Германия', ping: 150 },
+    { id: 'auto', remark: '🇩🇪 Авто-баланс', ping: 200 },
+    { id: 'nl', remark: '🇳🇱 Нидерланды', ping: 120 },
+  ]
+  assert.equal(defaultServer(list).id, 'auto')
+  assert.equal(defaultServer(list.filter(s => s.id !== 'auto')).id, 'nl')
+  assert.equal(defaultServer([{ id: 'a', remark: 'A' }, { id: 'b', remark: 'B' }]).id, 'a')
+  assert.equal(defaultServer([]), null)
+})
