@@ -1280,7 +1280,7 @@ function setupIPC() {
 
       // В TUN прямое соединение из приложения попадает в туннель — меряем через ядро.
       const viaCore = activeCore === singboxCore && singboxCore.getStatus() === 'connected' && singboxCore.getMode() === 'tun'
-        ? list => singboxCore.serverDelays(list.map(s => s.id))
+        ? list => singboxCore.serverDelays(list)
         : null
       const result = await subscriptionManager.pingAll(sub, settings.subscriptions || [], viaCore)
       if (result.success) {

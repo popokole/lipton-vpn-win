@@ -4,6 +4,7 @@ const net = require('net')
 const os = require('os')
 const { URL } = require('url')
 const crypto = require('crypto')
+const { measureServers } = require('./ping-utils')
 
 const ALLOWED_DOMAIN = 'sub.popokole.online'
 
@@ -268,10 +269,8 @@ function pingServer(address, port) {
 // TCP-соединение из приложения уходит в туннель и показывает 0–2 мс у любого сервера).
 async function pingAll(sub, subscriptions, pingFn = null) {
   const list = sub.servers || []
-  const viaCore = pingFn ? await pingFn(list) : null
-  const servers = await Promise.all(
-    list.map(async s => ({ ...s, ping: viaCore ? (viaCore[s.id] ?? null) : await pingServer(s.address, s.port) }))
-  )
+  const pings = pingFn ? await pingFn(list) : await measureServers(list, s => pingServer(s.address, s.port))
+  const servers = list.map(s => ({ ...s, ping: pings?.[s.id] ?? null }))
   const updated = subscriptions.map(s => s.id === sub.id ? { ...s, servers } : s)
   return { success: true, subscriptions: updated }
 }

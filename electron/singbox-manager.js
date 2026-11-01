@@ -30,6 +30,7 @@ const logger = require('./logger')
 const systemProxy = require('./system-proxy')
 const firewall = require('./firewall-guard')
 const { generateSingboxConfig, configKey, DNS_DIRECT_IP } = require('./singbox-config')
+const { measureServers } = require('./ping-utils')
 
 const MAX_RESTARTS = 5
 const RESTART_WINDOW_MS = 60_000
@@ -615,18 +616,17 @@ function checkTunnel() {
 
 /**
  * Задержка до серверов через ядро (clash_api). null — ядро не подключено.
- * @param {string[]} ids id серверов
+ * Одинаковые адреса меряются один раз, по несколько замеров (ping-utils).
+ * @param {object[]} servers серверы подписки
  * @returns {Promise<Object<string, number|null>|null>}
  */
-async function serverDelays(ids) {
+async function serverDelays(servers) {
   if (st.status !== 'connected' || !st.proc || !st.clash) return null
-  const out = {}
-  await Promise.all((ids || []).map(async id => {
-    const tag = st.tags[id]
+  return measureServers(servers, async s => {
+    const tag = st.tags[s.id]
     const r = tag ? await probe(tag, [PING_URL], PING_TIMEOUT_MS) : { ok: false }
-    out[id] = r.ok && typeof r.delay === 'number' ? r.delay : null
-  }))
-  return out
+    return r.ok && typeof r.delay === 'number' ? r.delay : null
+  })
 }
 
 /**
