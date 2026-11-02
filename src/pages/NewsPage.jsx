@@ -1,3 +1,4 @@
+import { IconButton, RowButton } from '../components/ui/Pressables'
 import { useEffect, useState } from 'react'
 import { Glass, Button, Icon, Dot, Flag } from '../components/ui'
 import { newsKey, newsTag, fmtNewsDate, agoLabel } from '../lib/news.mjs'
@@ -92,7 +93,7 @@ function NewsCard({ item, unread, index, onOpen }) {
   }
   return (
     <article className={`news-card2 news-card2--${tag.tone}${unread ? ' is-unread' : ''}${open ? ' is-open' : ''} ui-rise`} style={{ '--i': Math.min(index + 2, 8) }}>
-      <button type="button" className="news-card2-hit" onClick={toggle} aria-expanded={open} aria-label={item.title} />
+      <RowButton variant="news" onClick={toggle} aria-expanded={open} aria-label={item.title} />
       <div className="news-card2-meta">
         <time className="num">{fmtNewsDate(item.published_at)}</time>
         <span className={`news-chip news-chip--${tag.tone}`}>{tag.label}</span>
@@ -101,15 +102,12 @@ function NewsCard({ item, unread, index, onOpen }) {
       <h3 className="news-card2-title">{item.title}</h3>
       <p className="news-card2-text">{item.body}</p>
       {item.source_url ? (
-        <button
-          type="button"
-          className="news-card2-ext"
-          aria-label="Открыть источник"
+        <IconButton variant="external" label="Открыть источник"
           title="Открыть источник"
           onClick={e => { e.stopPropagation(); window.api?.openExternal?.(item.source_url) }}
         >
           <Icon name="external" size={16} stroke={2} />
-        </button>
+        </IconButton>
       ) : null}
     </article>
   )

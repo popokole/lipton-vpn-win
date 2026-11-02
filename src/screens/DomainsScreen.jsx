@@ -1,3 +1,4 @@
+import { IconButton } from '../components/ui/Pressables'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Field, Glass, Icon, Switch } from '../components/ui'
 import Screen, { Overline } from './Screen'
@@ -118,9 +119,9 @@ export default function DomainsScreen({ onBack }) {
                     <span className="set-row-title">{d.domain}</span>
                     <span className="set-row-sub">{addedLabel(d.addedAt)}</span>
                   </span>
-                  <button type="button" className="ui-icon-btn dom-remove" onClick={() => remove(d.domain)} aria-label={`Удалить ${d.domain}`} title="Удалить">
+                  <IconButton label={`Удалить ${d.domain} className="dom-remove" onClick={() => remove(d.domain)}`} title="Удалить">
                     <Icon name="close" size={14} stroke={2} />
-                  </button>
+                  </IconButton>
                 </div>
               ))}
             </Glass>

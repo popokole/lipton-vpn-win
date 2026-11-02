@@ -1,3 +1,4 @@
+import { Chip, IconButton, LinkButton, TextInput } from '../components/ui/Pressables'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { Glass, Icon } from '../components/ui'
 import Screen from './Screen'
@@ -26,7 +27,7 @@ const fmtDay = (ts) => {
 function Linkify({ text }) {
   const parts = String(text || '').split(/(https:\/\/[^\s)]+)/g)
   return parts.map((p, i) => (/^https:\/\//.test(p)
-    ? <button key={i} type="button" className="chat-link" onClick={() => window.api?.openExternal?.(p)}>{p}</button>
+    ? <LinkButton variant="chat" key={i} onClick={() => window.api?.openExternal?.(p)}>{p}</LinkButton>
     : <Fragment key={i}>{p}</Fragment>))
 }
 
@@ -120,7 +121,7 @@ export default function SupportScreen({ onBack, botUrl = 'https://t.me/liptonvpn
   const attachLogs = async () => {
     if (busy) return
     setBusy(true); setErr('')
-    push('user', '📎 Логи приложения отправлены')
+    push('user', 'Логи приложения отправлены')
     const r = await window.api.sendAppLogs().catch(x => ({ success: false, error: x?.message }))
     if (!alive.current) return
     if (r?.success) { if (r.reply) push('assistant', r.reply) }
@@ -192,16 +193,16 @@ export default function SupportScreen({ onBack, botUrl = 'https://t.me/liptonvpn
                   {canRate && (
                     <div className="chat-actions">
                       {rated[i] ? (
-                        <span className="chat-thanks"><Icon name="check" size={12} stroke={2.4} />{rated[i] === 'up' ? 'Спасибо! Рады, что помогло' : 'Спасибо — позовите оператора, он разберётся'}</span>
+                        <span className="chat-thanks"><Icon name="check" size={12} stroke={2.4} />{rated[i] === 'up' ? 'Спасибо, рады, что помогло' : 'Спасибо — позовите оператора, он разберётся'}</span>
                       ) : (
                         <>
-                          <button type="button" className="chat-chip chat-chip--ok" onClick={() => rate(i, m, true)}><Icon name="check" size={12} stroke={2.4} />Помогло</button>
-                          <button type="button" className="chat-chip" onClick={() => rate(i, m, false)}>Не помогло</button>
+                          <Chip variant="ok" onClick={() => rate(i, m, true)}><Icon name="check" size={12} stroke={2.4} />Помогло</Chip>
+                          <Chip onClick={() => rate(i, m, false)}>Не помогло</Chip>
                         </>
                       )}
-                      <button type="button" className="chat-chip" onClick={callOperator} disabled={operatorAsked}>
+                      <Chip onClick={callOperator} disabled={operatorAsked}>
                         <Icon name="headset" size={12} stroke={2.2} />{operatorAsked ? 'Оператор позван' : 'Позвать оператора'}
-                      </button>
+                      </Chip>
                     </div>
                   )}
                   <span className="chat-time">{mine ? fmtTime(m.at) : `${manual ? 'Поддержка' : 'ИИ-помощник'} · ${fmtTime(m.at)}`}</span>
@@ -215,20 +216,20 @@ export default function SupportScreen({ onBack, botUrl = 'https://t.me/liptonvpn
       {err && <div className="scr-error scr-error--block" role="alert">{err}</div>}
 
       <form className="chat-input ui-glass" onSubmit={send}>
-        <button type="button" className="chat-attach" onClick={attachLogs} disabled={busy} title="Отправить логи приложения" aria-label="Отправить логи приложения">
+        <IconButton variant="attach" label="Отправить логи приложения" onClick={attachLogs} disabled={busy} title="Отправить логи приложения">
           <Icon name="paperclip" size={18} stroke={1.8} />
-        </button>
-        <input
-          className="chat-field"
+        </IconButton>
+        <TextInput
+          variant="chat"
           value={text}
           onChange={e => setText(e.target.value)}
           placeholder="Сообщение…"
           aria-label="Сообщение"
           autoFocus
         />
-        <button type="submit" className="chat-send" disabled={busy || !text.trim()} aria-label="Отправить">
+        <IconButton variant="send" label="Отправить" type="submit" disabled={busy || !text.trim()}>
           {busy ? <span className="ui-spinner ui-spinner--sm" aria-hidden="true" /> : <Icon name="arrowUp" size={18} stroke={2.4} />}
-        </button>
+        </IconButton>
       </form>
     </Screen>
   )

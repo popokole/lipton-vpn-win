@@ -1,3 +1,4 @@
+import { ActionButton } from './ui/Pressables'
 import { Icon } from './ui'
 
 // Кнопка подключения в hero (200×52, капсула): «Подключить» — светлая со
@@ -12,15 +13,14 @@ export default function ConnectButton({ status, onConnect, disabled = false }) {
     on ? 'Отключить' : 'Подключить'
 
   return (
-    <button
-      type="button"
-      className={`connect-btn connect-btn--${on || pending ? 'on' : 'off'}`}
+    <ActionButton
+      variant={on || pending ? 'connectOn' : 'connectOff'}
       onClick={onConnect}
       disabled={pending || disabled}
       aria-busy={pending || undefined}
     >
       {pending ? <span className="ui-spinner" aria-hidden="true" /> : <Icon name="power" size={18} />}
       <span>{label}</span>
-    </button>
+    </ActionButton>
   )
 }

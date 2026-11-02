@@ -1,3 +1,4 @@
+import { ActionButton, LinkButton } from './ui/Pressables'
 import { Aurora, Button, Glass, Icon, Progress } from './ui'
 import { fmtMinSec, rub } from '../lib/plan.mjs'
 import { retryLabel } from '../lib/guest.mjs'
@@ -61,18 +62,18 @@ export function GuestEnded({ minutes = 15, retryAt, cheapest, onCreate, onLogin,
             </Button>
             <Button size="lg" icon={<Icon name="login" size={18} stroke={2} />} onClick={onLogin}>Войти</Button>
           </div>
-          <button type="button" className="guest-ended-tariffs ui-glass" onClick={onTariffs}>
+          <ActionButton variant="guestTariffs" onClick={onTariffs}>
             <span className="guest-ended-tariffs-ico" aria-hidden="true"><Icon name="tag" size={16} stroke={2} /></span>
             <span className="guest-ended-tariffs-text"><b>Тарифы</b><span>до 5 устройств</span></span>
             {cheapest ? <span className="guest-ended-price">от <b className="num">{rub(cheapest)}</b> / мес</span> : null}
             <Icon name="chevronRight" size={16} stroke={2} className="set-row-chev" />
-          </button>
+          </ActionButton>
           {next ? (
             <div className="guest-ended-next"><Icon name="clock" size={13} stroke={2} />Следующая бесплатная попытка — {next}</div>
           ) : onRetry ? (
-            <button type="button" className="onb-resend guest-ended-retry" onClick={onRetry} disabled={retrying}>
+            <LinkButton variant="resend" className="guest-ended-retry" onClick={onRetry} disabled={retrying}>
               <Icon name="refresh" size={13} stroke={2.2} /><span>{retrying ? 'Включаем…' : `Ещё ${minutes} минут бесплатно — новый день`}</span>
-            </button>
+            </LinkButton>
           ) : null}
         </div>
       </div>

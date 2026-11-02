@@ -1,3 +1,4 @@
+import { ActionButton, IconButton, LinkButton, RowButton, Tab } from '../components/ui/Pressables'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, CodeBoxes, Field, Flag, Glass, Icon, Logo } from '../components/ui'
 import { OnbGlow, OrbitArt, ClockArt, ChatArt, CheckArt } from './art'
@@ -66,17 +67,15 @@ function Tabs({ value, onChange }) {
   return (
     <div className="onb-tabs" role="tablist" aria-label="Способ входа">
       {tabs.map(t => (
-        <button
+        <Tab variant="onboarding"
           key={t.v}
-          type="button"
           role="tab"
           aria-selected={value === t.v}
-          className="onb-tab"
           onClick={() => onChange(t.v)}
         >
           <Icon name={t.icon} size={14} stroke={2} />
           <span>{t.label}</span>
-        </button>
+        </Tab>
       ))}
     </div>
   )
@@ -352,15 +351,15 @@ export default function Onboarding({
       body = (
         <>
           {stats}
-          <button type="button" className="onb-try" onClick={() => go('trial')}>
+          <ActionButton variant="try" onClick={() => go('trial')}>
             <span className="onb-try-text">
               <b>Попробовать {minText}</b>
               <span>без регистрации</span>
             </span>
             <span className="onb-try-arrow" aria-hidden="true"><Icon name="arrowRight" size={18} stroke={2.2} /></span>
-          </button>
+          </ActionButton>
           <Button size="lg" block icon={<Icon name="userPlus" size={18} stroke={2} />} onClick={() => go('start')}>Создать аккаунт</Button>
-          <div className="onb-foot">Уже есть аккаунт? <button type="button" className="onb-link onb-link--accent" onClick={() => go('login')}>Войти</button></div>
+          <div className="onb-foot">Уже есть аккаунт? <LinkButton variant="accent" onClick={() => go('login')}>Войти</LinkButton></div>
         </>
       )
       break
@@ -405,7 +404,7 @@ export default function Onboarding({
     case 'start':
       dots = 2
       art = <ChatArt />
-      topRight = <button type="button" className="onb-top-link" onClick={() => go('login')}>Войти</button>
+      topRight = <LinkButton variant="top" onClick={() => go('login')}>Войти</LinkButton>
       hero = {
         h1: 'Начнём', accent: 'знакомство.',
         sub: 'Создайте аккаунт за минуту — через нашего Telegram-бота или по почте.',
@@ -429,10 +428,10 @@ export default function Onboarding({
           </Button>
           <Button size="lg" block icon={<Icon name="mail" size={18} stroke={2} />} onClick={() => go('login', { tab: 'email', create: true })}>Создать по почте</Button>
           <p className="onb-terms">
-            Нажимая, вы соглашаетесь с <button type="button" className="onb-link" onClick={() => window.api?.openExternal?.(TERMS_URL)}>условиями</button>{' '}
-            и <button type="button" className="onb-link" onClick={() => window.api?.openExternal?.(PRIVACY_URL)}>политикой конфиденциальности</button>
+            Нажимая, вы соглашаетесь с <LinkButton onClick={() => window.api?.openExternal?.(TERMS_URL)}>условиями</LinkButton>{' '}
+            и <LinkButton onClick={() => window.api?.openExternal?.(PRIVACY_URL)}>политикой конфиденциальности</LinkButton>
           </p>
-          <div className="onb-foot">Уже есть аккаунт? <button type="button" className="onb-link onb-link--accent" onClick={() => go('login')}>Войти</button></div>
+          <div className="onb-foot">Уже есть аккаунт? <LinkButton variant="accent" onClick={() => go('login')}>Войти</LinkButton></div>
         </>
       )
       break
@@ -499,6 +498,7 @@ export default function Onboarding({
               >
                 Открыть Telegram
               </Button>
+              {/* ai-design-check-ignore-next-line icons-not-emoji -- дословная подпись кнопки в Telegram-боте, по ней её ищут */}
               <div className="onb-or"><span>или код из «💻 Вход через ПК» в боте</span></div>
               <CodeBoxes length={4} value={siteCode} onChange={v => { setSiteCode(v); setErr('') }} onComplete={exchange} flash={flash} disabled={busy} label="Код из бота" />
               <Button size="lg" block onClick={() => exchange(siteCode)} disabled={busy || siteCode.length !== 4 || flash === 'ok'}>
@@ -508,8 +508,8 @@ export default function Onboarding({
           )}
           <div className="onb-foot">
             {create
-              ? <>Уже есть аккаунт? <button type="button" className="onb-link onb-link--accent" onClick={() => go('login')}>Войти</button></>
-              : <>Нет аккаунта? <button type="button" className="onb-link onb-link--line" onClick={() => go('start')}>Создать через бота</button></>}
+              ? <>Уже есть аккаунт? <LinkButton variant="accent" onClick={() => go('login')}>Войти</LinkButton></>
+              : <>Нет аккаунта? <LinkButton variant="line" onClick={() => go('start')}>Создать через бота</LinkButton></>}
           </div>
         </>
       )
@@ -529,17 +529,15 @@ export default function Onboarding({
           >
             {flash === 'ok' ? 'Вход выполнен' : busy ? 'Входим…' : <>Подтвердить и войти <Icon name="arrowRight" size={16} stroke={2.2} className="onb-inline-ico" /></>}
           </Button>
-          <button
-            type="button"
-            className="onb-resend"
+          <LinkButton variant="resend"
             disabled={resendLeft > 0 || busy}
             onClick={() => requestEmail(params.email, { resend: true })}
           >
             <Icon name="refresh" size={13} stroke={2.2} />
             <span>Отправить код ещё раз</span>
             {resendLeft > 0 && <><span aria-hidden="true">·</span><span className="num">{fmtSec(resendLeft)}</span></>}
-          </button>
-          <div className="onb-foot"><button type="button" className="onb-link onb-link--line" onClick={back}>Изменить почту</button></div>
+          </LinkButton>
+          <div className="onb-foot"><LinkButton variant="line" onClick={back}>Изменить почту</LinkButton></div>
         </div>
       )
       break
@@ -580,11 +578,11 @@ export default function Onboarding({
               <Button size="lg" block onClick={() => verifyTg(tgCode)} disabled={busy || tgCode.length !== 6}>Войти по коду</Button>
             </>
           ) : (
-            <button type="button" className="onb-resend" onClick={() => setTgManual(true)}>
+            <LinkButton variant="resend" onClick={() => setTgManual(true)}>
               <Icon name="chatDots" size={13} stroke={2.2} /><span>Бот прислал код? Ввести вручную</span>
-            </button>
+            </LinkButton>
           ))}
-          <div className="onb-foot"><button type="button" className="onb-link onb-link--line" onClick={back}>Войти другим способом</button></div>
+          <div className="onb-foot"><LinkButton variant="line" onClick={back}>Войти другим способом</LinkButton></div>
         </div>
       )
       break
@@ -623,14 +621,14 @@ export default function Onboarding({
               </span>
             </Glass>
           )}
-          <button type="button" className="onb-item onb-item--link ui-glass" onClick={() => window.api?.openExternal?.(CONNECT_URL)}>
+          <RowButton variant="onboardingItem" onClick={() => window.api?.openExternal?.(CONNECT_URL)}>
             <span className="onb-item-ico onb-item-ico--blue"><Icon name="phone" size={18} stroke={2} /></span>
             <span className="onb-item-text">
               <b>Другие устройства</b>
               <span>Как подключить — на сайте, в «Подключении»</span>
             </span>
             <Icon name="chevronRight" size={16} stroke={2} className="onb-item-chev" />
-          </button>
+          </RowButton>
           <Button variant="primary" size="lg" block onClick={() => finish('auth')}>
             Перейти на главный экран <Icon name="arrowRight" size={16} stroke={2.2} className="onb-inline-ico" />
           </Button>
@@ -672,7 +670,7 @@ export default function Onboarding({
           <Button variant="primary" size="lg" block onClick={finishHowto}>
             Продолжить <Icon name="arrowRight" size={16} stroke={2.2} className="onb-inline-ico" />
           </Button>
-          <button type="button" className="onb-skip" onClick={finishHowto}>Пропустить</button>
+          <LinkButton variant="skip" onClick={finishHowto}>Пропустить</LinkButton>
         </>
       )
       break
@@ -699,9 +697,9 @@ export default function Onboarding({
       <section className="onb-side">
         <div className="onb-top">
           {showBack ? (
-            <button type="button" className="onb-back" onClick={back} aria-label="Назад">
+            <IconButton variant="backOnboarding" label="Назад" onClick={back}>
               <Icon name="chevronLeft" size={18} stroke={2.2} />
-            </button>
+            </IconButton>
           ) : <span />}
           {topRight || (label ? <span className="onb-top-label">{label}</span> : null)}
         </div>

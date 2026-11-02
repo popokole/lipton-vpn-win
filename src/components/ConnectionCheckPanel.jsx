@@ -1,3 +1,4 @@
+import { ActionButton, IconButton } from './ui/Pressables'
 import { useState, useEffect, useRef } from 'react'
 
 const STEPS = ['Что видит ChatGPT', 'Что видят другие сайты', 'IPv6', 'DNS']
@@ -63,19 +64,19 @@ export default function ConnectionCheckPanel({ onClose }) {
       <div className={`settings-panel${closing ? ' settings-panel--closing' : ''}`}>
         <div className="settings-header">
           <span className="settings-title">Проверка соединения</span>
-          <button className="settings-close" onClick={close}>
+          <IconButton variant="close" label="Закрыть" onClick={close}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
               stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
               <path d="M1 1l8 8M9 1L1 9"/>
             </svg>
-          </button>
+          </IconButton>
         </div>
 
         <div className="settings-body">
           {running && (
             <div className="check-running">
               <div className="spinner check-spinner" />
-              <span className="check-running-title">Проверяем через VPN...</span>
+              <span className="check-running-title">Проверяем через VPN…</span>
               <div className="check-steps">
                 {STEPS.map(s => <span key={s} className="check-step">{s}</span>)}
               </div>
@@ -112,14 +113,14 @@ export default function ConnectionCheckPanel({ onClose }) {
             </>
           )}
 
-          <button className="settings-flush-btn check-again-btn" onClick={run} disabled={running}>
+          <ActionButton variant="check" onClick={run} disabled={running}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <polyline points="23 4 23 10 17 10"/>
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
             </svg>
-            {running ? 'Проверяется...' : 'Проверить снова'}
-          </button>
+            {running ? 'Проверяется…' : 'Проверить снова'}
+          </ActionButton>
 
           <span className="check-privacy">
             Запросы идут к chatgpt.com, cloudflare.com, icanhazip.com и DNS Akamai тем же путём,

@@ -1,3 +1,4 @@
+import { Checkbox, IconButton, LinkButton, RowButton } from '../components/ui/Pressables'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Glass, Segmented, Button, Icon, Switch, Progress, ConfirmDialog } from '../components/ui'
 import { daysWord, rub, fmtMinSec } from '../lib/plan.mjs'
@@ -61,9 +62,9 @@ function Row({ icon, iconTone, title, sub, subTone, onClick, right, chevron, chi
   )
   if (onClick) {
     return (
-      <button type="button" className={`set-row set-row--link ${className}`} onClick={onClick} disabled={disabled}>
+      <RowButton className={className} onClick={onClick} disabled={disabled}>
         {body}
-      </button>
+      </RowButton>
     )
   }
   return <div className={`set-row ${className}`}>{body}</div>
@@ -103,7 +104,7 @@ function GuestCard({ guest, onAuth }) {
       <div className="set-guest-actions">
         <Button variant="primary" block icon={<Icon name="send" size={15} stroke={2} />} onClick={() => onAuth('start')}>Создать аккаунт через Telegram</Button>
         <Button block icon={<Icon name="mail" size={15} stroke={2} />} onClick={() => onAuth('login', { tab: 'email', create: true })}>Создать по почте</Button>
-        <div className="set-guest-foot">Уже есть аккаунт? <button type="button" className="onb-link onb-link--accent" onClick={() => onAuth('login')}>Войти</button></div>
+        <div className="set-guest-foot">Уже есть аккаунт? <LinkButton variant="accent" onClick={() => onAuth('login')}>Войти</LinkButton></div>
       </div>
     </Glass>
   )
@@ -184,9 +185,9 @@ function SubscriptionCard({ plan, view, onRenew, onChange, onSync, syncing }) {
         <span className="set-sub-head-right">
           <span className={`set-badge set-badge--${has ? 'ok' : 'warn'}`}><i aria-hidden="true" />{STATUS_BADGE[kind] || 'Нет подписки'}</span>
           {canChange && (
-            <button type="button" className="ui-icon-btn set-sub-sync" onClick={onSync} disabled={syncing} aria-label="Обновить данные подписки" title="Обновить данные подписки">
+            <IconButton label="Обновить данные подписки" className="set-sub-sync" onClick={onSync} disabled={syncing} title="Обновить данные подписки">
               {syncing ? <span className="ui-spinner ui-spinner--sm" aria-hidden="true" /> : <Icon name="refresh" size={14} stroke={2} />}
-            </button>
+            </IconButton>
           )}
         </span>
       </div>
@@ -245,9 +246,9 @@ function DevicesCard({ devices, error, loading, myHwid, onRevoke, onRelink, onRe
               ? <><b className="set-mine">Это устройство</b>{seen ? ` · ${seen}` : ''}</>
               : [info.platform, seen].filter(Boolean).join(' · ')}
             right={
-              <button type="button" className="ui-icon-btn set-revoke" aria-label={`Отвязать ${info.title}`} title="Отвязать устройство" onClick={() => onRevoke(d, info, mine)}>
+              <IconButton label={`Отвязать ${info.title} className="set-revoke"`} title="Отвязать устройство" onClick={() => onRevoke(d, info, mine)}>
                 <Icon name="unlink" size={16} stroke={1.8} />
-              </button>
+              </IconButton>
             }
           />
         )
@@ -259,10 +260,10 @@ function DevicesCard({ devices, error, loading, myHwid, onRevoke, onRelink, onRe
         right={<Button size="sm" onClick={onRelink}>Обновить</Button>}
       />
       {list.length > 0 && (
-        <button type="button" className="set-row set-row--center set-danger-link" onClick={onRevokeAll}>
+        <RowButton variant="dangerRow" onClick={onRevokeAll}>
           <Icon name="unlink" size={16} stroke={1.8} />
           <span>Отвязать все устройства</span>
-        </button>
+        </RowButton>
       )}
     </Glass>
   )
@@ -508,7 +509,7 @@ export default function SettingsPage({
             <>
               {cancelWarning({ daysLeft: plan?.daysLeft || 0, untilLabel: plan?.untilLabel || '', hasCard: !!profile?.has_card })}
               <label className="dialog-check">
-                <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} disabled={busy} />
+                <Checkbox checked={agree} onChange={e => setAgree(e.target.checked)} disabled={busy} />
                 <span>Понимаю, что деньги не вернутся</span>
               </label>
             </>
@@ -662,7 +663,7 @@ export default function SettingsPage({
                 value={prefs.bypassRu}
                 onChange={setPref('bypassRu', v => window.api?.setBypassRu?.(v))}
               />
-              <button type="button" className="set-row set-row--link set-row--domains" onClick={() => onOpen('domains')}>
+              <RowButton className="set-row--domains" onClick={() => onOpen('domains')}>
                 <span className="set-row-line">
                   <span className="set-ico" aria-hidden="true"><Icon name="list" size={16} stroke={2} /></span>
                   <span className="set-row-text">
@@ -678,10 +679,10 @@ export default function SettingsPage({
                   {domainList.length > 3 && <span className="set-chip">+{domainList.length - 3}</span>}
                   <span className="set-chip set-chip--add"><Icon name="plus" size={12} stroke={2.2} />Добавить</span>
                 </span>
-              </button>
+              </RowButton>
               <ToggleRow
                 icon="plug"
-                title="Kill Switch"
+                title="Kill switch"
                 sub="Блокирует сеть при обрыве VPN"
                 value={prefs.killSwitch}
                 onChange={setPref('killSwitch', v => window.api?.setKillSwitch?.(v))}
@@ -715,10 +716,10 @@ export default function SettingsPage({
               <div className="set-row set-row--stack set-logs">
                 <div className="set-row-line">
                   <span className="set-ico" aria-hidden="true"><Icon name="terminal" size={16} stroke={2} /></span>
-                  <button type="button" className="set-row-text set-logs-open" onClick={() => onOpen('logs')}>
+                  <RowButton variant="logs" onClick={() => onOpen('logs')}>
                     <span className="set-row-title">Логи приложения <Icon name="chevronRight" size={14} stroke={2} className="set-inline-chev" /></span>
                     <span className="set-row-sub">Пригодятся поддержке</span>
-                  </button>
+                  </RowButton>
                   <Button size="sm" icon={<Icon name={copied ? 'check' : 'copy'} size={14} stroke={2} />} onClick={copyLogs}>
                     {copied ? 'Скопировано' : 'Копировать'}
                   </Button>
@@ -727,9 +728,9 @@ export default function SettingsPage({
                   {logs.length
                     ? logs.slice(-3).map((l, i) => <div key={i} className={/\[ERROR\]/.test(l) ? 'is-err' : /\[WARN\]/.test(l) ? 'is-warn' : ''}>{l}</div>)
                     : <div className="is-empty">Логи пусты — подключитесь к VPN</div>}
-                  <button type="button" className="set-logs-file" onClick={() => window.api?.openLogFile?.()}>
+                  <LinkButton variant="file" onClick={() => window.api?.openLogFile?.()}>
                     <Icon name="file" size={12} stroke={2} /><span>Открыть файл</span>
-                  </button>
+                  </LinkButton>
                 </div>
               </div>
               <Row
@@ -755,19 +756,19 @@ export default function SettingsPage({
               />
               <Row icon="file" title="Политика конфиденциальности" chevron onClick={() => onOpen('privacy')} />
             </Glass>
-            <button type="button" className="set-small-link" onClick={() => onOpen('licenses')}>
+            <LinkButton variant="small" onClick={() => onOpen('licenses')}>
               <Icon name="layers" size={12} stroke={2} />Лицензии третьих сторон
-            </button>
+            </LinkButton>
           </Section>
 
           {authed && hasAccess && !plan?.canceled && (
-            <button type="button" className="set-cancel ui-rise" style={{ '--i': 5 }} onClick={() => openDialog({ kind: 'cancel' })}>
+            <RowButton variant="cancel" style={{ '--i': 5 }} onClick={() => openDialog({ kind: 'cancel' })}>
               <span className="set-ico set-ico--warn" aria-hidden="true"><Icon name="xCircle" size={16} stroke={2} /></span>
               <span className="set-row-text">
                 <span className="set-row-title">Отменить подписку</span>
                 <span className="set-row-sub">Закончится сразу, остаток не возвращается</span>
               </span>
-            </button>
+            </RowButton>
           )}
           {authed && (
             <Button variant="glass" size="lg" block className="set-logout ui-rise" style={{ '--i': 6 }} icon={<Icon name="logout" size={18} stroke={2} />} onClick={onLogout}>

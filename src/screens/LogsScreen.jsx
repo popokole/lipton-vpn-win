@@ -1,3 +1,4 @@
+import { LinkButton } from '../components/ui/Pressables'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, ConfirmDialog, Glass, Icon } from '../components/ui'
 import Screen from './Screen'
@@ -89,8 +90,8 @@ export default function LogsScreen({ onBack, authed, onToast, botUrl = 'https://
       </Glass>
 
       <div className="logs-foot">
-        <button type="button" className="set-logs-file" onClick={() => window.api?.openLogFile?.()}><Icon name="file" size={12} stroke={2} /><span>Открыть файл</span></button>
-        <button type="button" className="logs-clear" onClick={() => setConfirm(true)}><Icon name="trash" size={13} stroke={2} /><span>Очистить логи</span></button>
+        <LinkButton variant="file" onClick={() => window.api?.openLogFile?.()}><Icon name="file" size={12} stroke={2} /><span>Открыть файл</span></LinkButton>
+        <LinkButton variant="danger" onClick={() => setConfirm(true)}><Icon name="trash" size={13} stroke={2} /><span>Очистить логи</span></LinkButton>
       </div>
 
       <ConfirmDialog

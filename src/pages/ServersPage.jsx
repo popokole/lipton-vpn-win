@@ -1,3 +1,4 @@
+import { ActionButton, OptionCard } from '../components/ui/Pressables'
 import { Glass, Button, Icon, Dot, Flag, Signal } from '../components/ui'
 import { rub } from '../lib/plan.mjs'
 import {
@@ -18,9 +19,10 @@ function ServerRow({ server, index, active, bypass, onSelect }) {
   const tone = pingTone(server.ping)
   const accent = serverAccent(index, server.ping, bypass)
   return (
-    <button
-      type="button"
-      className={`srv-row srv-row--${accent}${active ? ' is-active' : ''} ui-rise`}
+    <OptionCard
+      variant="server"
+      active={active}
+      className={`srv-row--${accent} ui-rise`}
       style={{ '--i': index + 2 }}
       onClick={() => onSelect(server.id)}
       aria-pressed={active}
@@ -38,7 +40,7 @@ function ServerRow({ server, index, active, bypass, onSelect }) {
         <span className={`srv-ms srv-ms--${tone} num`}>{server.ping != null ? `${server.ping} мс` : '—'}</span>
       </span>
       {active && <span className="srv-row-check" aria-label="Выбран"><Icon name="check" size={12} stroke={3} /></span>}
-    </button>
+    </OptionCard>
   )
 }
 
@@ -49,9 +51,10 @@ function AutoCard({ server, active, connected, livePing, pingHistory, exposure, 
   const heights = hasLive ? rangeHeights(hist, 32, 12, 4) : [14, 20, 17, 24, 19, 27, 22, 30, 25, 20, 26, 18, 23, 28, 21, 32]
   const country = active && connected ? exposure?.country : ''
   return (
-    <button
-      type="button"
-      className={`auto-card${active ? ' is-active' : ''} ui-rise`}
+    <OptionCard
+      variant="auto"
+      active={active}
+      className="ui-rise"
       style={{ '--i': 1 }}
       onClick={() => onSelect(server.id)}
       aria-pressed={active}
@@ -95,7 +98,7 @@ function AutoCard({ server, active, connected, livePing, pingHistory, exposure, 
           <b>{active && connected ? (exposure?.countryName || 'определяем…') : 'по пингу из вашей сети'}</b>
         </span>
       </span>
-    </button>
+    </OptionCard>
   )
 }
 
@@ -119,7 +122,7 @@ function BypassPromo({ offer, onBuy }) {
           {offer.priceKopeks ? <b>{rub(offer.priceKopeks)}</b> : null}
           <span>/ {offer.days} дней</span>
         </span>
-        <button type="button" className="bypass-promo-btn" onClick={onBuy}>Подключить тариф</button>
+        <ActionButton variant="promo" onClick={onBuy}>Подключить тариф</ActionButton>
       </div>
     </Glass>
   )

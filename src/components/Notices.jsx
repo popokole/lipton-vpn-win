@@ -1,3 +1,4 @@
+import { IconButton } from './ui/Pressables'
 import { Glass, Icon, Button } from './ui'
 
 // Уведомления в правом нижнем углу области контента: тосты, «Обновление
@@ -16,9 +17,9 @@ export default function Notices({ items = [] }) {
           </div>
           {n.action && <Button size="sm" variant="primary" onClick={n.action.onClick}>{n.action.label}</Button>}
           {n.onClose && (
-            <button type="button" className="ui-icon-btn" aria-label="Закрыть" onClick={n.onClose}>
+            <IconButton label="Закрыть" onClick={n.onClose}>
               <Icon name="close" size={14} />
-            </button>
+            </IconButton>
           )}
         </Glass>
       ))}

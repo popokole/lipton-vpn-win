@@ -1,3 +1,4 @@
+import { LinkButton } from '../components/ui/Pressables'
 import { useEffect, useRef, useState } from 'react'
 import { Button, CodeBoxes, Field, Glass, Icon } from '../components/ui'
 import Screen from './Screen'
@@ -134,11 +135,11 @@ export default function EmailScreen({ onBack, onToast, onChanged }) {
               <CodeBoxes ref={codeRef} length={6} value={code} onChange={v => { setCode(v); setErr('') }} onComplete={confirm} flash={flash} disabled={step !== 2 || busy} label="Код из письма" />
               {step === 2 && err && <div className="scr-error" role="alert">{err}</div>}
               {step === 2 && (
-                <button type="button" className="onb-resend" disabled={left > 0 || busy} onClick={() => send(sentTo)}>
+                <LinkButton variant="resend" disabled={left > 0 || busy} onClick={() => send(sentTo)}>
                   <Icon name="refresh" size={13} stroke={2.2} />
                   <span>Отправить код ещё раз</span>
                   {left > 0 && <><span aria-hidden="true">·</span><span className="num">{Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}</span></>}
-                </button>
+                </LinkButton>
               )}
               <Button block disabled={step !== 2 || busy || code.length !== 6} onClick={() => confirm()} icon={<Icon name="check" size={15} stroke={2.2} />}>
                 Подтвердить

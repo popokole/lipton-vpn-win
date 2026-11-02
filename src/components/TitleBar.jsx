@@ -1,3 +1,4 @@
+import { IconButton } from './ui/Pressables'
 import { Logo, Icon } from './ui'
 
 // Заголовок окна 40 px: знак, «Lipton VPN», свернуть / развернуть / закрыть.
@@ -12,27 +13,21 @@ export default function TitleBar({ maximized = false, onToggleMaximize, children
         {children && <div className="titlebar-extra">{children}</div>}
       </div>
       <div className="titlebar-controls">
-        <button type="button" className="titlebar-btn" aria-label="Свернуть" title="Свернуть" onClick={() => window.api?.minimize?.()}>
+        <IconButton variant="titlebar" label="Свернуть" title="Свернуть" onClick={() => window.api?.minimize?.()}>
           <Icon name="minimize" size={14} />
-        </button>
-        <button
-          type="button"
-          className="titlebar-btn"
-          aria-label={maximized ? 'Свернуть в окно' : 'Развернуть'}
+        </IconButton>
+        <IconButton variant="titlebar" label={maximized ? 'Свернуть в окно' : 'Развернуть'}
           title={maximized ? 'Свернуть в окно' : 'Развернуть'}
           onClick={onToggleMaximize}
         >
           <Icon name={maximized ? 'restore' : 'maximize'} size={14} />
-        </button>
-        <button
-          type="button"
-          className="titlebar-btn titlebar-btn--close"
-          aria-label="Закрыть"
+        </IconButton>
+        <IconButton variant="titlebarClose" label="Закрыть"
           title="Закрыть — VPN продолжит работать в трее"
           onClick={() => window.api?.close?.()}
         >
           <Icon name="close" size={14} />
-        </button>
+        </IconButton>
       </div>
     </header>
   )

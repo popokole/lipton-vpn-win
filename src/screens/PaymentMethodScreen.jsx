@@ -1,3 +1,4 @@
+import { RowButton } from '../components/ui/Pressables'
 import { useEffect, useRef, useState } from 'react'
 import { Button, ConfirmDialog, Glass, Icon } from '../components/ui'
 import Screen from './Screen'
@@ -130,10 +131,10 @@ export default function PaymentMethodScreen({ onBack, onToast, onPay, plan }) {
 
             {err && !dialog && <div className="scr-error scr-error--block" role="alert">{err}</div>}
 
-            <button type="button" className="pm-unlink ui-rise" style={{ '--i': 3 }} onClick={() => { setErr(''); setDialog(true) }}>
+            <RowButton variant="unlink" style={{ '--i': 3 }} onClick={() => { setErr(''); setDialog(true) }}>
               <Icon name="unlink" size={16} stroke={2} />
               <span>Отвязать карту</span>
-            </button>
+            </RowButton>
             {blockedUntil && blockedUntil > Date.now() && (
               <div className="scr-hint scr-hint--left"><Icon name="clock" size={13} stroke={2} />Карту привязали недавно — отвязать можно {whenLabel(blockedUntil)}</div>
             )}

@@ -1,0 +1,29 @@
+{
+  "ignore": [
+    "dist/**",
+    "release/**",
+    "resources/**",
+    "dllInhistory/**"
+  ],
+  "allow": {
+    "no-heavy-headings": [
+      "src/styles/fonts.css"
+    ],
+    "locale-aware-case": [
+      "electron/**",
+      "main.js",
+      "preload.js",
+      "scripts/**",
+      "tests/**",
+      "src/lib/**",
+      "src/components/ui/Flag.jsx",
+      "src/components/Bento.jsx:.toLowerCase()",
+      "src/components/ConnectionCheckPanel.jsx:.toLowerCase()",
+      "src/onboarding/Onboarding.jsx:.toLowerCase()",
+      "src/screens/EmailScreen.jsx:.toLowerCase()",
+      "src/screens/LogsScreen.jsx:.toUpperCase()",
+      "src/screens/PromoScreen.jsx:.toUpperCase()"
+    ]
+  },
+  "//": "locale-aware-case: коды стран, email, уровни логов, промокоды и системный код — латиница/технические строки, локаль не нужна"
+}

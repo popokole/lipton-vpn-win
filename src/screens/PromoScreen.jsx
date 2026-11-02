@@ -1,3 +1,4 @@
+import { IconButton } from '../components/ui/Pressables'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Field, Glass, Icon } from '../components/ui'
 import Screen, { Overline } from './Screen'
@@ -84,9 +85,9 @@ export default function PromoScreen({ onBack, onPay, cheapest }) {
                 <span className="promo-applied-code">{pending.code} <span className="scr-pill scr-pill--ok">применён</span></span>
                 <span className="promo-applied-sub">{promoBenefit(pending)}</span>
               </span>
-              <button type="button" className="ui-icon-btn" onClick={clear} aria-label="Убрать промокод" title="Убрать промокод">
+              <IconButton label="Убрать промокод" onClick={clear} title="Убрать промокод">
                 <Icon name="close" size={14} stroke={2} />
-              </button>
+              </IconButton>
             </Glass>
           )}
           {pending && onPay && (

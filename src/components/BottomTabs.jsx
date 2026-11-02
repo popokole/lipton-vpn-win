@@ -1,3 +1,4 @@
+import { Tab } from './ui/Pressables'
 import { Icon } from './ui'
 
 // Компактное окно (уже 760 px, макет new-combo-win-on): нижние вкладки вместо
@@ -13,10 +14,8 @@ export default function BottomTabs({ page, onNavigate, badges = {} }) {
   return (
     <nav className="bottom-tabs" aria-label="Разделы">
       {TABS.map(t => (
-        <button
+        <Tab variant="bottom"
           key={t.page}
-          type="button"
-          className="bottom-tab"
           aria-current={page === t.page ? 'page' : undefined}
           onClick={() => onNavigate(t.page)}
         >
@@ -25,7 +24,7 @@ export default function BottomTabs({ page, onNavigate, badges = {} }) {
             {badges[t.page] > 0 && <i className="bottom-tab-dot" aria-label={`Непрочитанных: ${badges[t.page]}`} />}
           </span>
           <span>{t.label}</span>
-        </button>
+        </Tab>
       ))}
     </nav>
   )

@@ -1,3 +1,4 @@
+import { Tab } from './ui/Pressables'
 import { Icon, Button, Progress } from './ui'
 import { daysWord, fmtMinSec } from '../lib/plan.mjs'
 import { retryLabel } from '../lib/guest.mjs'
@@ -78,10 +79,8 @@ export default function Sidebar({ page, onNavigate, badges = {}, plan, version, 
     <aside className="sidebar">
       <nav className="side-nav" aria-label="Разделы">
         {NAV.map(item => (
-          <button
+          <Tab variant="side"
             key={item.page}
-            type="button"
-            className="side-nav-btn"
             aria-current={page === item.page ? 'page' : undefined}
             onClick={() => onNavigate(item.page)}
           >
@@ -92,7 +91,7 @@ export default function Sidebar({ page, onNavigate, badges = {}, plan, version, 
                 {badges[item.page] > 9 ? '9+' : badges[item.page]}
               </span>
             )}
-          </button>
+          </Tab>
         ))}
       </nav>
 

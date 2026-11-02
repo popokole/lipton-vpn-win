@@ -1,3 +1,4 @@
+import { Chip, LinkButton, RowButton } from '../components/ui/Pressables'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Field, Glass, Icon } from '../components/ui'
 import Screen, { Overline } from './Screen'
@@ -43,7 +44,7 @@ function Article({ slug, onClose }) {
   return (
     <div className="kb-article ui-rise" style={{ '--i': 1 }}>
       <div className="kb-article-bar">
-        <button type="button" className="onb-link onb-link--line kb-back" onClick={onClose}><Icon name="chevronLeft" size={14} stroke={2.2} />Все статьи</button>
+        <LinkButton variant="line" className="kb-back" onClick={onClose}><Icon name="chevronLeft" size={14} stroke={2.2} />Все статьи</LinkButton>
         <Button size="sm" icon={<Icon name="external" size={13} stroke={2} />} onClick={() => window.api?.openArticles?.(slug)}>Открыть на сайте</Button>
       </div>
       {state.loading && <div className="scr-loading"><span className="ui-spinner" aria-label="Загрузка" /></div>}
@@ -92,12 +93,12 @@ export default function KnowledgeScreen({ onBack, onSupport }) {
     return seen
   }, [articles])
 
-  const q = query.trim().toLowerCase()
+  const q = query.trim().toLocaleLowerCase('ru')
   const shown = useMemo(() => (articles || []).filter(a =>
     (!category || a.category === category) &&
-    (!q || `${a.title} ${a.excerpt || ''} ${a.category || ''}`.toLowerCase().includes(q))), [articles, category, q])
+    (!q || `${a.title} ${a.excerpt || ''} ${a.category || ''}`.toLocaleLowerCase('ru').includes(q))), [articles, category, q])
   const shownFaq = useMemo(() => (faq || []).filter(f =>
-    !q || `${f.question} ${f.answer}`.toLowerCase().includes(q)), [faq, q])
+    !q || `${f.question} ${f.answer}`.toLocaleLowerCase('ru').includes(q)), [faq, q])
 
   const loading = articles === null || (articles.length === 0 && faq === null && !error)
   const usingFaq = articles !== null && articles.length === 0
@@ -112,9 +113,9 @@ export default function KnowledgeScreen({ onBack, onSupport }) {
           {categories.length > 0 && (
             <div className="kb-cats ui-rise" style={{ '--i': 2 }}>
               {categories.map(c => (
-                <button key={c} type="button" className="kb-cat" aria-pressed={category === c} onClick={() => setCategory(cur => (cur === c ? '' : c))}>
+                <Chip variant="category" key={c} aria-pressed={category === c} onClick={() => setCategory(cur => (cur === c ? '' : c))}>
                   <Icon name={categoryIcon(c)} size={14} stroke={2} />{c}
-                </button>
+                </Chip>
               ))}
             </div>
           )}
@@ -127,14 +128,14 @@ export default function KnowledgeScreen({ onBack, onSupport }) {
               <Overline meta={category ? null : 'чаще всего читают'}>{category || 'Популярное'}</Overline>
               <Glass className="set-card ui-rise" style={{ '--i': 3 }}>
                 {shown.map(a => (
-                  <button key={a.slug} type="button" className="set-row set-row--link kb-row" onClick={() => setOpen(a.slug)}>
+                  <RowButton className="kb-row" key={a.slug} onClick={() => setOpen(a.slug)}>
                     <span className="set-ico" aria-hidden="true"><Icon name={categoryIcon(a.category)} size={16} stroke={2} /></span>
                     <span className="set-row-text">
                       <span className="set-row-title kb-row-title">{a.title}</span>
                       <span className="set-row-sub">{[a.category, minutesLabel(a.minutes || a.reading_minutes)].filter(Boolean).join(' · ')}</span>
                     </span>
                     <Icon name="chevronRight" size={16} stroke={2} className="set-row-chev" />
-                  </button>
+                  </RowButton>
                 ))}
                 {!shown.length && <div className="set-row set-row--muted">Ничего не нашлось — попробуйте другие слова</div>}
               </Glass>
@@ -149,11 +150,11 @@ export default function KnowledgeScreen({ onBack, onSupport }) {
                   const isOpen = openFaq === f.id
                   return (
                     <div key={f.id} className={`kb-faq${isOpen ? ' is-open' : ''}`}>
-                      <button type="button" className="set-row set-row--link" aria-expanded={isOpen} onClick={() => setOpenFaq(isOpen ? null : f.id)}>
+                      <RowButton aria-expanded={isOpen} onClick={() => setOpenFaq(isOpen ? null : f.id)}>
                         <span className="set-ico" aria-hidden="true"><Icon name="info" size={16} stroke={2} /></span>
                         <span className="set-row-text"><span className="set-row-title kb-row-title">{f.question}</span></span>
                         <Icon name="chevronDown" size={16} stroke={2} className="set-row-chev kb-faq-chev" />
-                      </button>
+                      </RowButton>
                       {isOpen && <div className="kb-faq-answer">{f.answer}</div>}
                     </div>
                   )

@@ -1,3 +1,5 @@
+import { Icon } from './ui'
+import { ActionButton, IconButton, OptionCard, Tab, TextInput } from './ui/Pressables'
 import { useState, useEffect, useRef } from 'react'
 
 function rub(kopeks) {
@@ -285,11 +287,11 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
       <div className={`settings-panel${closing ? ' settings-panel--closing' : ''}`}>
         <div className="settings-header">
           <span className="settings-title">{mode === 'change' ? 'Смена тарифа' : 'Оформление подписки'}</span>
-          <button className="settings-close" onClick={close}>
+          <IconButton variant="close" label="Закрыть" onClick={close}>
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
               <path d="M1 1l8 8M9 1L1 9"/>
             </svg>
-          </button>
+          </IconButton>
         </div>
 
         <div className="settings-body">
@@ -297,10 +299,10 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
 
           {ok && paid ? (
             <div className="bill-ok">
-              <div className="bill-ok-ico" style={{ fontSize: 44 }}>🎉</div>
+              <div className="bill-ok-ico"><Icon name="check" size={40} stroke={2.2} /></div>
               {flow === 'change' ? (
                 <>
-                  <div className="bill-ok-title">Тариф изменён!</div>
+                  <div className="bill-ok-title">Тариф изменён</div>
                   <div className="bill-ok-text">
                     {isOverlay(chOpt)
                       ? <>«{chOpt.tariff_title}» действует до {fmtDate(chOpt.overlay_until)}. Потом снова «{chOpt.revert_tariff_title}» до {fmtDate(changed.new_period_end)}.</>
@@ -309,11 +311,11 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
                 </>
               ) : (
                 <>
-                  <div className="bill-ok-title">Оплата прошла!</div>
+                  <div className="bill-ok-title">Оплата прошла</div>
                   <div className="bill-ok-text">Подписка активна. Можно подключаться.</div>
                 </>
               )}
-              <button className="acc-btn acc-btn--cta" onClick={() => window.api.accountSync().then(close)}>Отлично, закрыть</button>
+              <ActionButton onClick={() => window.api.accountSync().then(close)}>Отлично, закрыть</ActionButton>
             </div>
           ) : ok && payErr ? (
             <div className="bill-ok">
@@ -327,14 +329,14 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
                   : 'Платёж отклонён или отменён. Попробуйте оплатить снова — можно другой картой или по СБП.'}
               </div>
               {flow === 'change' && payErr === 'timeout' ? (
-                <button className="acc-btn acc-btn--cta" onClick={() => setPayErr('')}>Проверить ещё раз</button>
+                <ActionButton onClick={() => setPayErr('')}>Проверить ещё раз</ActionButton>
               ) : (
-                <button className="acc-btn acc-btn--cta" onClick={retry}>Оплатить снова</button>
+                <ActionButton onClick={retry}>Оплатить снова</ActionButton>
               )}
               {payErr === 'timeout' && txId && flow !== 'change' && (
-                <button className="acc-btn" style={{ marginTop: 8 }} onClick={() => { setPayErr(''); }}>
+                <ActionButton variant="secondary" style={{ marginTop: 8 }} onClick={() => { setPayErr(''); }}>
                   Проверить ещё раз
-                </button>
+                </ActionButton>
               )}
             </div>
           ) : ok ? (
@@ -356,8 +358,8 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
             <>
               {canChange && (
                 <div className="auth-tabs">
-                  <button className={`auth-tab${mode === 'buy' ? ' auth-tab--on' : ''}`} onClick={() => setMode('buy')}>Продлить</button>
-                  <button className={`auth-tab${mode === 'change' ? ' auth-tab--on' : ''}`} onClick={() => openChange()}>Сменить тариф</button>
+                  <Tab active={mode === 'buy'} onClick={() => setMode('buy')}>Продлить</Tab>
+                  <Tab active={mode === 'change'} onClick={() => openChange()}>Сменить тариф</Tab>
                 </div>
               )}
 
@@ -385,9 +387,9 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
                         const m = monthly(p)
                         const save = baseMonthly > 0 ? Math.round((1 - m / baseMonthly) * 100) : 0
                         return (
-                          <button
+                          <OptionCard
                             key={p.id}
-                            className={`bill-period${sel === p.id ? ' bill-period--on' : ''}`}
+                            active={sel === p.id}
                             onClick={() => setSel(p.id)}
                           >
                             <div className="bill-period-top">
@@ -396,7 +398,7 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
                             </div>
                             <span className="bill-period-price">{rub(p.price_kopeks)}</span>
                             <span className="bill-period-per">{rub(m)}/мес</span>
-                          </button>
+                          </OptionCard>
                         )
                       })}
                     </div>
@@ -404,8 +406,7 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
 
                   <div className="settings-section">
                     <span className="settings-section-title">Промокод</span>
-                    <input
-                      className="auth-input"
+                    <TextInput
                       value={promo}
                       onChange={e => setPromo(e.target.value)}
                       placeholder="Если есть"
@@ -414,9 +415,9 @@ export default function BillingPanel({ onClose, initialMode = 'buy', prefer = nu
                     />
                   </div>
 
-                  <button className="acc-btn acc-btn--cta" onClick={buy} disabled={busy || !sel}>
+                  <ActionButton onClick={buy} disabled={busy || !sel}>
                     {busy ? 'Создаём платёж…' : 'Перейти к оплате'}
-                  </button>
+                  </ActionButton>
                   <div className="bill-note">Оплата картой РФ через ЮKassa. Откроется защищённая страница оплаты.</div>
                 </>
               )}
@@ -478,9 +479,9 @@ function ChangeBlock({ view, chg, note, sel, preview, previewBusy, busy, err, on
           ) : (
             <>
               <PreviewRows o={preview} discountPercent={chg.discount_percent} />
-              <button className="acc-btn acc-btn--cta" onClick={onConfirm} disabled={busy}>
+              <ActionButton onClick={onConfirm} disabled={busy}>
                 {busy ? 'Подождите…' : confirmLabel(preview)}
-              </button>
+              </ActionButton>
               {preview.surcharge_kopeks > 0 && !preview.will_charge_card && (
                 <div className="bill-note">Откроется защищённая страница оплаты ЮKassa — картой или по СБП.</div>
               )}
@@ -497,7 +498,7 @@ function ChangeBlock({ view, chg, note, sel, preview, previewBusy, busy, err, on
 function ChangeOptionCard({ o, on, onClick }) {
   const overlay = isOverlay(o)
   return (
-    <button className={`bill-period${on ? ' bill-period--on' : ''}`} onClick={onClick}>
+    <OptionCard active={on} onClick={onClick}>
       <div className="bill-period-top">
         <span className="bill-period-name">«{o.tariff_title}» · {periodLabel(o.period_days)}</span>
         {overlay && <span className="bill-tag">временно</span>}
@@ -521,7 +522,7 @@ function ChangeOptionCard({ o, on, onClick }) {
           <span className="bill-period-per">новая дата — {fmtDate(o.new_period_end)}</span>
         </>
       )}
-    </button>
+    </OptionCard>
   )
 }
 
@@ -555,7 +556,7 @@ function PreviewRows({ o, discountPercent }) {
       {o.extra_days > 0 && row('Перенесено днями', `+${o.extra_days} дн.`, true)}
       {row('Действует до', fmtDate(o.new_period_end))}
       <div className="bill-note bill-note--left">
-        Дальше продление — {rub(o.price_kopeks)} за {periodLabel(o.period_days).toLowerCase()}.
+        Дальше продление — {rub(o.price_kopeks)} за {periodLabel(o.period_days).toLocaleLowerCase('ru')}.
       </div>
     </>
   )

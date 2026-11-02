@@ -1,3 +1,4 @@
+import { IconButton } from '../components/ui/Pressables'
 import { Icon } from '../components/ui'
 
 // Подэкран настроек (макеты new-scr-*): «‹ Заголовок» и содержимое во всю
@@ -6,9 +7,9 @@ export default function Screen({ title, sub, onBack, right = null, fill = false,
   return (
     <div className={`scr${fill ? ' scr--fill' : ''} ${className}`}>
       <div className="scr-head">
-        <button type="button" className="scr-back" onClick={onBack} aria-label="Назад" title="Назад (Esc)">
+        <IconButton variant="back" label="Назад" onClick={onBack} title="Назад (Esc)">
           <Icon name="chevronLeft" size={18} stroke={2.2} />
-        </button>
+        </IconButton>
         <div className="scr-titles">
           <h1 className="ui-h1">{title}</h1>
           {sub && <span className="ui-h1-sub">{sub}</span>}

@@ -1,3 +1,4 @@
+import { LinkButton } from '../components/ui/Pressables'
 import { Button, Glass, Icon } from '../components/ui'
 import Screen, { Overline } from './Screen'
 
@@ -61,9 +62,9 @@ export default function PrivacyScreen({ onBack, onLicenses, botName = '@liptonvp
       <div className="priv-foot">
         <Button icon={<Icon name="external" size={14} stroke={2} />} onClick={() => window.api?.openExternal?.(SITE_PRIVACY)}>Полная версия на liptonone.online</Button>
         {onLicenses && (
-          <button type="button" className="priv-licenses" onClick={onLicenses}>
+          <LinkButton variant="privacy" onClick={onLicenses}>
             <Icon name="layers" size={12} stroke={2} />Лицензии третьих сторон — sing-box, Wintun, шрифты
-          </button>
+          </LinkButton>
         )}
       </div>
     </Screen>

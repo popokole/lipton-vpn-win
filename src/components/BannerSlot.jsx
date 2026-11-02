@@ -1,3 +1,4 @@
+import { IconButton } from './ui/Pressables'
 import { Glass, Icon, Button } from './ui'
 
 // Слот баннера над контентом главной: баннеры из админки (GET /app/banners —
@@ -17,9 +18,9 @@ export default function BannerSlot({ banners = [] }) {
           </div>
           {b.action && <Button size="sm" variant="primary" onClick={b.action.onClick}>{b.action.label}</Button>}
           {b.onClose && (
-            <button type="button" className="ui-icon-btn" aria-label="Скрыть" onClick={b.onClose}>
+            <IconButton label="Скрыть" onClick={b.onClose}>
               <Icon name="close" size={14} />
-            </button>
+            </IconButton>
           )}
         </Glass>
       ))}

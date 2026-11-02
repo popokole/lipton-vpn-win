@@ -1,3 +1,4 @@
+import { ActionButton, LinkButton } from './ui/Pressables'
 import { Aurora, Capsule, Dot, Icon, Flag } from './ui'
 import ConnectButton from './ConnectButton'
 import { connectionLabel, fmtClock } from '../lib/plan.mjs'
@@ -80,28 +81,28 @@ export default function Hero({
         <div className="hero-sub-row">{sub}</div>
 
         {!serversCount && !on && cta ? (
-          <button type="button" className="connect-btn connect-btn--off" onClick={cta.onClick}>
+          <ActionButton variant="connectOff" onClick={cta.onClick}>
             <Icon name={cta.icon || 'crown'} size={18} />
             <span>{cta.label}</span>
-          </button>
+          </ActionButton>
         ) : (
           <ConnectButton status={status} onConnect={onConnect} disabled={!serversCount && !on} />
         )}
 
         {!serversCount && !on && cta?.secondary ? (
-          <button type="button" className="hero-link" onClick={cta.secondary.onClick}>{cta.secondary.label}</button>
+          <LinkButton variant="hero" onClick={cta.secondary.onClick}>{cta.secondary.label}</LinkButton>
         ) : server ? (
-          <button type="button" className="hero-server" onClick={onServers} aria-label={`Сменить сервер: ${name}`}>
+          <ActionButton variant="server" onClick={onServers} aria-label={`Сменить сервер: ${name}`}>
             <ServerFlag remark={server.remark} />
             <span className="hero-server-name">{name}</span>
             <Icon name="chevronRight" size={16} stroke={2} className="hero-server-chev" />
-          </button>
+          </ActionButton>
         ) : (
-          <button type="button" className="hero-server" onClick={onServers}>
+          <ActionButton variant="server" onClick={onServers}>
             <span className="hero-flag hero-flag--none" aria-hidden="true"><Icon name="globe" size={14} /></span>
             <span className="hero-server-name">{serversCount ? 'Выбрать сервер' : 'Серверы'}</span>
             <Icon name="chevronRight" size={16} stroke={2} className="hero-server-chev" />
-          </button>
+          </ActionButton>
         )}
       </div>
 
