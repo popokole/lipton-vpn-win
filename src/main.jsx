@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import ErrorBoundary from './ErrorBoundary'
 // Порядок важен: шрифты и токены → база → компоненты → каркас и экраны → старые панели.
 import './styles/fonts.css'
 import './styles/tokens.css'
@@ -16,6 +17,8 @@ import 'flag-icons/css/flag-icons.min.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 )

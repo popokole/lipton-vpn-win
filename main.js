@@ -17,6 +17,7 @@ const { createStats } = require('./electron/vpn-stats')
 const guestTrial = require('./electron/guest-trial')
 const bypassDomains = require('./electron/bypass-domains')
 const { setupAutoUpdater } = require('./electron/auto-updater')
+const { guardWindow } = require('./electron/window-guard')
 
 const isDev = process.env.ELECTRON_IS_DEV === '1'
 
@@ -293,6 +294,9 @@ function createWindow() {
   mainWindow.on('hide', sendVisibility)
   mainWindow.on('minimize', sendVisibility)
   mainWindow.on('restore', sendVisibility)
+
+  // Чёрное окно после ресайза: перерисовка, перезагрузка упавшего интерфейса, причина — в лог.
+  guardWindow(app, mainWindow)
 }
 
 // Размер и положение окна запоминаем с задержкой (resize/move сыплются пачками).
