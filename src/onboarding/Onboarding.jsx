@@ -4,6 +4,7 @@ import { Button, CodeBoxes, Field, Flag, Glass, Icon, Logo } from '../components
 import { OnbGlow, OrbitArt, ClockArt, ChatArt, CheckArt } from './art'
 import { planSummary, daysWord, rub, cheapestMonthly, plural } from '../lib/plan.mjs'
 import { deviceInfo } from '../lib/settings.mjs'
+import { SHOW_DEVICES } from '../lib/features.mjs'
 import { minutesWord, retryLabel, trialMinutes } from '../lib/guest.mjs'
 
 // Знакомство, вход и гостевой доступ (макеты new-onb-*), под окно 960×620:
@@ -609,7 +610,7 @@ export default function Onboarding({
               <span className="onb-item-check" aria-hidden="true"><Icon name="check" size={12} stroke={2.8} /></span>
             </Glass>
           )}
-          {has && devices && (
+          {SHOW_DEVICES && has && devices && (
             <Glass className="onb-item">
               <span className="onb-item-ico"><Icon name="desktop" size={18} stroke={2} /></span>
               <span className="onb-item-text">

@@ -5,6 +5,7 @@ import { daysWord, rub, fmtMinSec } from '../lib/plan.mjs'
 import {
   lastSeenLabel, deviceInfo, sinceLabel, initialOf, domainsWord, domainName, cancelWarning,
 } from '../lib/settings.mjs'
+import { SHOW_DEVICES } from '../lib/features.mjs'
 
 // Настройки (макеты new-pc-settings-full / -play): на ПК в них же профиль.
 // Слева — аккаунт, подписка, устройства, приложение, уведомления, оплата;
@@ -364,7 +365,7 @@ export default function SettingsPage({
     if (r.prefs) setNotif(normalizeNotif(r.prefs))
   }
 
-  useEffect(() => { if (hasAccess) loadDevices() }, [hasAccess, loadDevices])
+  useEffect(() => { if (hasAccess && SHOW_DEVICES) loadDevices() }, [hasAccess, loadDevices])
 
   const setPref = (key, setter) => async (value) => {
     setPrefs(p => ({ ...p, [key]: value }))
@@ -562,7 +563,7 @@ export default function SettingsPage({
             </Section>
           )}
 
-          {hasAccess && (
+          {SHOW_DEVICES && hasAccess && (
             <Section title="Устройства" meta={devMeta}>
               <DevicesCard
                 devices={dev.devices}
