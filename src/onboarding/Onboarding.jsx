@@ -646,19 +646,19 @@ export default function Onboarding({
     case 'howto':
     default:
       dots = 1
-      hero = { h1: 'Как пользоваться', accent: 'VPN', sub: 'Три простых шага — и вы под защитой.' }
+      hero = { h1: 'Как пользоваться', accent: 'VPN', sub: 'Одно нажатие — и вы под защитой. Сервер выбирать не нужно.' }
       body = (
         <>
           <ol className="onb-steps">
             <li>
               <span className="onb-step-n">1</span>
-              <span className="onb-step-text"><b>Выберите сервер</b><span>или Авто-баланс</span></span>
-              <span className="onb-pill"><Flag code="de" size={16} />Германия<Icon name="chevronDown" size={12} stroke={2.2} /></span>
+              <span className="onb-step-text"><b>Нажмите «Подключить»</b><span>Авто-баланс сам выберет быстрый сервер</span></span>
+              <span className="onb-pill onb-pill--light"><Icon name="power" size={13} stroke={2.2} />Подключить</span>
             </li>
             <li>
               <span className="onb-step-n">2</span>
-              <span className="onb-step-text"><b>Подключитесь</b><span>в одно нажатие</span></span>
-              <span className="onb-pill onb-pill--light"><Icon name="power" size={13} stroke={2.2} />Подключить</span>
+              <span className="onb-step-text"><b>Страну можно сменить</b><span>в разделе «Серверы», если нужно</span></span>
+              <span className="onb-pill"><Icon name="shuffle" size={13} stroke={2.2} />Авто-баланс<Icon name="chevronDown" size={12} stroke={2.2} /></span>
             </li>
             <li>
               <span className="onb-step-n">3</span>
