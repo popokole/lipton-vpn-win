@@ -1405,7 +1405,7 @@ async function reconnectAfterRelink(prevRemark) {
 
 // ─── Trial subscription ───────────────────────────────────────────────────────
 
-const TRIAL_URL = 'https://sub.popokole.online/NcvZvQsDXeQ1TJZu'
+const TRIAL_URL = 'https://api.videoload.tech/NcvZvQsDXeQ1TJZu'
 const TRIAL_DURATION = 60 * 60 * 1000
 const DAILY_TRIAL_DURATION = 15 * 60 * 1000
 // Прежний тест-доступ по общей ссылке (если на сервере гостевой доступ выключен):

@@ -6,7 +6,8 @@ const { URL } = require('url')
 const crypto = require('crypto')
 const { measureServers } = require('./ping-utils')
 
-const ALLOWED_DOMAIN = 'sub.popokole.online'
+// Домены подписки: новый (videoload.tech) и старый — popokole.online живёт до 14.12.2026.
+const ALLOWED_DOMAINS = ['api.videoload.tech', 'sub.popokole.online']
 
 // ─── Device identity ──────────────────────────────────────────────────────────
 
@@ -44,8 +45,8 @@ function validateUrl(url) {
   try { parsed = new URL(url) } catch {
     throw new Error('Неверный формат ссылки')
   }
-  if (parsed.hostname !== ALLOWED_DOMAIN) {
-    throw new Error(`Разрешены только ссылки с домена ${ALLOWED_DOMAIN}`)
+  if (!ALLOWED_DOMAINS.includes(parsed.hostname)) {
+    throw new Error(`Разрешены только ссылки с доменов ${ALLOWED_DOMAINS.join(', ')}`)
   }
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new Error('Ссылка должна начинаться с https://')
