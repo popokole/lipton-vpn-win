@@ -55,6 +55,19 @@ function cmd(c) {
   catch (e) { console.warn('[TUN] cmd failed:', e.message, '|', c) }
 }
 
+// Индекс адаптера TUN: без IF Windows может привязать маршрут 10.0.0.1 к Ethernet,
+// и «весь трафик через VPN» уходит мимо туннеля (было 10.11.2026 на v2.2.15).
+function getTunIfIndex() {
+  try {
+    const out = execSync(
+      `powershell -NoProfile -NonInteractive -Command "(Get-NetAdapter -Name '${TUN_NAME}' -ErrorAction Stop).ifIndex"`,
+      { encoding: 'utf8', timeout: 4000, windowsHide: true }
+    ).trim()
+    const n = parseInt(out, 10)
+    return Number.isInteger(n) && n > 0 ? n : null
+  } catch { return null }
+}
+
 function waitForInterface(proc, timeout = 12000) {
   return new Promise((resolve, reject) => {
     let done = false
@@ -134,8 +147,11 @@ async function start(serverAddress, socksPort = 10808) {
   cmd(`netsh interface ipv4 set subinterface "${TUN_NAME}" mtu=1380 store=active`)
 
   // Split default route through TUN (two /1 entries override default gateway)
-  cmd(`route add 0.0.0.0   mask 128.0.0.0 ${TUN_GW} metric 5`)
-  cmd(`route add 128.0.0.0 mask 128.0.0.0 ${TUN_GW} metric 5`)
+  const ifIdx = getTunIfIndex()
+  const ifArg = ifIdx ? ` IF ${ifIdx}` : ''
+  console.log(`[TUN] Индекс адаптера: ${ifIdx || 'не найден'}`)
+  cmd(`route add 0.0.0.0   mask 128.0.0.0 ${TUN_GW} metric 5${ifArg}`)
+  cmd(`route add 128.0.0.0 mask 128.0.0.0 ${TUN_GW} metric 5${ifArg}`)
 
   console.log('[TUN] TUN mode активирован — весь трафик (TCP+UDP) через VPN, MTU=1380')
 }
