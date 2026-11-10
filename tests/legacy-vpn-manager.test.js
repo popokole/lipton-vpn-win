@@ -8,6 +8,7 @@ const { PassThrough } = require('node:stream')
 const test = require('node:test')
 const { parseUri } = require('../electron/subscription-manager')
 const { generateConfig } = require('../electron/xray-config')
+const { generateSingboxConfig } = require('../electron/singbox-config')
 
 const server = { protocol: 'vless', uuid: 'test', address: 'example.com', port: 443 }
 
@@ -123,4 +124,29 @@ test('Xray keeps the XHTTP packet-up mode from the subscription', () => {
   const transport = generateConfig(parsed).outbounds[0].streamSettings.xhttpSettings
   assert.equal(transport.mode, 'packet-up')
   assert.equal(transport.path, '/stream')
+})
+
+test('Xray TUN has one DNS path and routes bypass traffic before it reaches Xray', () => {
+  const xray = generateConfig(server, { tunFrontend: true, bypassDomains: ['example.ru'] })
+  assert.equal(xray.dns, undefined)
+  assert.equal(xray.routing.domainStrategy, 'AsIs')
+  assert.deepEqual(xray.routing.rules.map(rule => rule.outboundTag), ['proxy'])
+
+  const { config } = generateSingboxConfig([], {
+    endpoint: '192.0.2.10', localSocksPort: 10808, bypassDomains: ['example.ru'],
+  })
+  const [tun] = config.inbounds
+  assert.equal(tun.strict_route, true)
+  assert.equal(tun.dns_mode, 'hijack')
+  assert.deepEqual(tun.route_exclude_address, ['192.0.2.10/32'])
+  assert.deepEqual(config.dns.servers.map(({ type, detour }) => ({ type, detour })), [
+    { type: 'https', detour: 'proxy' },
+  ])
+  assert.equal(config.dns.rules.length, 0)
+  assert.equal(config.outbounds[0].type, 'socks')
+  const rules = config.route.rules
+  const rejectBroadcast = rules.findIndex(rule => rule.ip_cidr?.includes('255.255.255.255/32'))
+  assert.ok(rules.findIndex(rule => rule.action === 'hijack-dns') < rejectBroadcast)
+  assert.ok(rejectBroadcast < rules.findIndex(rule => rule.ip_is_private))
+  assert.ok(rules.some(rule => rule.outbound === 'direct' && rule.domain_suffix?.includes('example.ru')))
 })

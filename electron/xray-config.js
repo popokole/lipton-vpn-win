@@ -101,7 +101,7 @@ function generateConfig(server, opts = {}) {
   const socksPort = opts.socksPort || 10808
   const httpPort = opts.httpPort || 10809
   const bypassRu = opts.bypassRu !== false // default: true
-  const bypassDomains = (opts.bypassDomains || []).map(d => `domain:${d.replace(/^domain:/, '')}`)
+  const bypassDomains = (opts.tunFrontend ? [] : opts.bypassDomains || []).map(d => `domain:${d.replace(/^domain:/, '')}`)
   let outbound
   if (server.protocol === 'vless') outbound = vlessOutbound(server)
   else if (server.protocol === 'vmess') outbound = vmessOutbound(server)
@@ -114,7 +114,7 @@ function generateConfig(server, opts = {}) {
     rules.push({ type: 'field', domain: bypassDomains, outboundTag: 'direct' })
   }
 
-  if (bypassRu) {
+  if (!opts.tunFrontend && bypassRu) {
     rules.push({
       type: 'field',
       domain: [
@@ -138,7 +138,7 @@ function generateConfig(server, opts = {}) {
       ip: ['geoip:ru', 'geoip:private'],
       outboundTag: 'direct',
     })
-  } else {
+  } else if (!opts.tunFrontend) {
     // Only bypass private/loopback IPs, route everything else including RU through VPN
     rules.push({
       type: 'field',
@@ -179,12 +179,12 @@ function generateConfig(server, opts = {}) {
       { tag: 'block', protocol: 'blackhole', settings: { response: { type: 'http' } } },
     ],
     routing: {
-      domainStrategy: 'IPIfNonMatch',
+      domainStrategy: opts.tunFrontend ? 'AsIs' : 'IPIfNonMatch',
       rules,
     },
-    dns: {
+    ...(!opts.tunFrontend && { dns: {
       servers: ['8.8.8.8', '8.8.4.4', '1.1.1.1'],
-    },
+    } }),
   }
 }
 

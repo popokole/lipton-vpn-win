@@ -152,6 +152,7 @@ function connect(server, opts = {}) {
       const config = generateConfig(server, {
         socksPort,
         httpPort,
+        tunFrontend: mode === 'tun',
         bypassRu: opts.bypassRu !== false,
         bypassDomains: opts.bypassDomains || [],
         adBlock: opts.adBlock === true,
@@ -186,7 +187,10 @@ function connect(server, opts = {}) {
       await opts.probeLegacy('proxy', httpPort, signal)
       signal.throwIfAborted()
       if (mode === 'tun') {
-        await tunManager.start(endpoint, socksPort, { signal, onExit: () => unexpectedExit(session, opts) })
+        await tunManager.start(endpoint, socksPort, {
+          dataDir, signal, bypassRu: opts.bypassRu, bypassDomains: opts.bypassDomains, directDomains: opts.directDomains,
+          onExit: () => unexpectedExit(session, opts),
+        })
         await opts.probeLegacy('tun', httpPort, signal)
       } else {
         session.proxySet = setProxy('127.0.0.1', httpPort, { bypassRu: opts.bypassRu !== false })

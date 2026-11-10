@@ -196,12 +196,15 @@ function serverOutbound(s, tag) {
  *   strictRoute     strict_route для TUN (по умолчанию true)
  *   stack           стек TUN (mixed)
  *   mtu             MTU TUN (9000)
+ *   localSocksPort   порт Xray SOCKS, если sing-box управляет только TUN и DNS
+ *   endpoint        IPv4 сервера Xray, который исключается из маршрутов TUN
  *   clashApi        { port, secret } — локальный API для готовности и смены сервера
  *   logLevel        уровень логов sing-box (warn)
  * @returns {{ config: object, tags: Object<string,string>, selectedTag: string, skipped: object[] }}
  */
 function generateSingboxConfig(servers, opts = {}) {
   const mode = opts.mode === 'proxy' ? 'proxy' : 'tun'
+  const socksPort = mode === 'tun' ? opts.localSocksPort : null
   const bypassRu = opts.bypassRu !== false
   const bypassDomains = normalizeDomains(opts.bypassDomains).filter(d => !FORCE_PROXY_DOMAINS.some(p => d === p || d.endsWith('.' + p)))
   const serviceDomains = normalizeDomains(opts.directDomains)
@@ -210,8 +213,10 @@ function generateSingboxConfig(servers, opts = {}) {
   const httpPort = Number(opts.httpPort) || DEFAULT_HTTP_PORT
   const rulesDir = opts.rulesDir || path.join(__dirname, '..', 'resources', 'sing-box', 'rules')
 
-  const list = Array.isArray(servers) ? servers : [servers]
-  const serverOutbounds = []
+  const list = socksPort ? [] : Array.isArray(servers) ? servers : [servers]
+  const serverOutbounds = socksPort ? [
+    { type: 'socks', tag: 'proxy', server: '127.0.0.1', server_port: socksPort, version: '5' },
+  ] : []
   const tags = {}
   const skipped = []
 
@@ -252,10 +257,12 @@ function generateSingboxConfig(servers, opts = {}) {
   const dns = {
     servers: [
       { ...DNS_REMOTE },
-      { type: 'udp', tag: 'dns-direct', server: DNS_DIRECT_IP },
-      { type: 'local', tag: 'dns-local' },
+      ...(socksPort ? [] : [
+        { type: 'udp', tag: 'dns-direct', server: DNS_DIRECT_IP },
+        { type: 'local', tag: 'dns-local' },
+      ]),
     ],
-    rules: dnsRules,
+    rules: socksPort ? [] : dnsRules,
     final: 'dns-remote',
     strategy: 'ipv4_only',
     cache_capacity: 4096,
@@ -277,6 +284,10 @@ function generateSingboxConfig(servers, opts = {}) {
   } else {
     inbound = { type: 'mixed', tag: 'mixed-in', listen: '127.0.0.1', listen_port: httpPort }
   }
+  if (socksPort) {
+    inbound.dns_mode = 'hijack'
+    inbound.route_exclude_address = [opts.endpoint + '/32']
+  }
 
   // ── Маршрутизация ──
   const rules = [
@@ -284,6 +295,7 @@ function generateSingboxConfig(servers, opts = {}) {
     { type: 'logical', mode: 'or', rules: [{ protocol: 'dns' }, { port: 53 }], action: 'hijack-dns' },
     // У нод нет IPv6-выхода: отклоняем, приложения сразу уходят на IPv4 через туннель.
     { ip_version: 6, action: 'reject' },
+    ...(socksPort ? [{ ip_cidr: ['224.0.0.0/4', '255.255.255.255/32', TUN_ADDRESS[0]], action: 'reject' }] : []),
     { ip_is_private: true, outbound: 'direct' },
     { domain_suffix: FORCE_PROXY_DOMAINS, outbound: 'proxy' },
     { domain_suffix: directDomains, outbound: 'direct' },
@@ -316,7 +328,7 @@ function generateSingboxConfig(servers, opts = {}) {
   const route = {
     rules,
     final: 'proxy',
-    default_domain_resolver: { server: 'dns-direct', strategy: 'ipv4_only' },
+    default_domain_resolver: { server: socksPort ? 'dns-remote' : 'dns-direct', strategy: 'ipv4_only' },
   }
   if (ruleSets.length) route.rule_set = ruleSets
   if (mode === 'tun') route.auto_detect_interface = true
@@ -326,13 +338,13 @@ function generateSingboxConfig(servers, opts = {}) {
     dns,
     inbounds: [inbound],
     outbounds: [
-      {
+      ...(socksPort ? [] : [{
         type: 'selector',
         tag: 'proxy',
         outbounds: serverOutbounds.map(o => o.tag),
         default: selectedTag,
         interrupt_exist_connections: true,
-      },
+      }]),
       ...serverOutbounds,
       { type: 'direct', tag: 'direct' },
     ],
