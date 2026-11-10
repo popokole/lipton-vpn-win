@@ -1227,8 +1227,6 @@ button.bt:active { transform: scale(0.99); }
 .set-sub-actions .ui-btn { font-size: 14px; }
 .set-note { font-size: 12px; font-weight: 500; line-height: 16px; color: var(--c-text-3); }
 .set-mine { color: var(--st-accent); font-weight: 600; }
-.set-warn-line { display: inline-flex; align-items: center; gap: 4px; color: var(--x-orange-t); font-weight: 600; }
-.set-revoke { flex-shrink: 0; border: 1px solid var(--c-line-2); }
 .set-danger-link {
   min-height: 52px;
   gap: 8px;

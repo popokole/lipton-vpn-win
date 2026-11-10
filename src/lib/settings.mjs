@@ -11,11 +11,11 @@ function toMs(v) {
 
 const hhmm = d => d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 
-// Последняя активность устройства: «в сети» / «сегодня в 14:02» / «вчера в 22:14» / «3 октября».
+// Последняя активность устройства: «недавно» / «сегодня в 14:02» / «вчера в 22:14» / «3 октября».
 export function lastSeenLabel(value, now = Date.now()) {
   const t = toMs(value)
   if (t == null) return ''
-  if (now - t < 15 * MIN) return 'в сети'
+  if (now - t < 15 * MIN) return 'недавно'
   const d = new Date(t)
   const start = new Date(now)
   start.setHours(0, 0, 0, 0)

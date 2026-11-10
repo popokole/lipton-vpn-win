@@ -1,6 +1,6 @@
 {
   "name": "lipton-vpn",
-  "version": "2.2.18",
+  "version": "2.2.19",
   "description": "Lipton VPN - Быстро и безопасно",
   "main": "main.js",
   "scripts": {
@@ -53,9 +53,13 @@
       "requestedExecutionLevel": "requireAdministrator"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
-      "createDesktopShortcut": "always",
+      "selectPerMachineByDefault": false,
+      "include": "build/installer.nsh",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "artifactName": "Lipton-VPN-Setup-${version}.${ext}",
+      "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Lipton VPN",
       "deleteAppDataOnUninstall": false
@@ -75,7 +79,8 @@
         "from": "resources/",
         "to": "resources/",
         "filter": [
-          "**/*"
+          "**/*",
+          "!xray/tun2socks.exe"
         ]
       }
     ],

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="164" height="314" viewBox="0 0 164 314">
+  <style>
+    @font-face {
+      font-family: Onest;
+      font-weight: 500;
+      src: url(../node_modules/@fontsource/onest/files/onest-latin-500-normal.woff2) format('woff2');
+    }
+    @font-face {
+      font-family: Onest;
+      font-weight: 700;
+      src: url(../node_modules/@fontsource/onest/files/onest-latin-700-normal.woff2) format('woff2');
+    }
+  </style>
+  <rect width="164" height="314" fill="#050807"/>
+  <g font-family="Onest, Segoe UI, sans-serif">
+    <text x="20" y="43" fill="#FFFFFF" font-size="19" font-weight="700" letter-spacing="-.19">Lipton VPN</text>
+    <text x="20" y="63" fill="#FFFFFF" fill-opacity=".55" font-size="11" font-weight="500">Windows</text>
+  </g>
+  <g transform="translate(-17 117) scale(5.25)">
+    <g transform="translate(3.2 0) skewX(-9)">
+      <rect x="8" y="7" width="5.4" height="26" rx="2.7" fill="#34F5A3"/>
+      <rect x="17" y="19" width="5.4" height="14" rx="2.7" fill="#22E58A"/>
+      <rect x="26" y="13" width="5.4" height="20" rx="2.7" fill="#0FA968"/>
+    </g>
+  </g>
+</svg>

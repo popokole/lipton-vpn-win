@@ -3,8 +3,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, CodeBoxes, Field, Flag, Glass, Icon, Logo } from '../components/ui'
 import { OnbGlow, OrbitArt, ClockArt, ChatArt, CheckArt } from './art'
 import { planSummary, daysWord, rub, cheapestMonthly, plural } from '../lib/plan.mjs'
-import { deviceInfo } from '../lib/settings.mjs'
-import { SHOW_DEVICES } from '../lib/features.mjs'
 import { minutesWord, retryLabel, trialMinutes } from '../lib/guest.mjs'
 
 // Знакомство, вход и гостевой доступ (макеты new-onb-*), под окно 960×620:
@@ -148,7 +146,7 @@ export default function Onboarding({
   }
 
   // ── Вход выполнен ──
-  const [auth, setAuth] = useState(null) // { view, devices, hwid, limit }
+  const [auth, setAuth] = useState(null) // { view }
   const authed = useCallback((sync) => {
     setFlash('ok')
     setTimeout(() => {
@@ -279,7 +277,7 @@ export default function Onboarding({
     else shake(r?.error || 'Неверный код')
   }
 
-  // ── «Вы вошли»: подписка и это устройство ──
+  // ── «Вы вошли»: подписка ──
   useEffect(() => {
     if (step !== 'success') return undefined
     let live = true
@@ -290,14 +288,7 @@ export default function Onboarding({
         const s = await api.accountSubscriptionView?.().catch(() => null)
         view = s?.success ? s.view : null
       }
-      const d = await api.accountDevices?.().catch(() => null)
-      if (!live) return
-      setAuth(a => ({
-        ...(a || {}), view,
-        devices: d?.success ? d.devices || [] : null,
-        hwid: d?.hwid || null,
-        limit: d?.device_limit || view?.device_limit || null,
-      }))
+      if (live) setAuth(a => ({ ...a, view }))
     })()
     return () => { live = false }
   }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -592,12 +583,9 @@ export default function Onboarding({
       const view = auth?.view || null
       const plan = planSummary({ subscriptions: [], view, config })
       const has = plan.kind === 'active' || plan.kind === 'trial'
-      const devices = auth?.devices
-      const mine = devices && auth?.hwid ? devices.find(d => d.hwid === auth.hwid) : null
-      const limit = auth?.limit || 5
       art = <CheckArt />
       topRight = <span className="onb-top-ok"><i aria-hidden="true" />Вход выполнен</span>
-      hero = { h1: 'Вы вошли.', accent: 'Всё готово.', sub: has ? 'Подписка и устройства уже подтянулись.' : 'Аккаунт на месте — осталось выбрать тариф.' }
+      hero = { h1: 'Вы вошли.', accent: 'Всё готово.', sub: has ? 'Подписка уже в приложении.' : 'Аккаунт на месте — осталось выбрать тариф.' }
       body = (
         <>
           {has && (
@@ -608,18 +596,6 @@ export default function Onboarding({
                 <span className="num">{[plan.untilLabel, `осталось ${plan.daysLeft} ${daysWord(plan.daysLeft)}`].filter(Boolean).join(' · ')}</span>
               </span>
               <span className="onb-item-check" aria-hidden="true"><Icon name="check" size={12} stroke={2.8} /></span>
-            </Glass>
-          )}
-          {SHOW_DEVICES && has && devices && (
-            <Glass className="onb-item">
-              <span className="onb-item-ico"><Icon name="desktop" size={18} stroke={2} /></span>
-              <span className="onb-item-text">
-                <b>{mine ? 'Устройство добавлено' : 'Устройства на подписке'}</b>
-                <span className="num">{mine ? `${deviceInfo(mine).title} · ` : ''}{devices.length} из {limit}</span>
-              </span>
-              <span className="onb-meter" aria-hidden="true">
-                {Array.from({ length: Math.min(limit, 8) }, (_, i) => <i key={i} className={i < devices.length ? 'is-on' : ''} />)}
-              </span>
             </Glass>
           )}
           <RowButton variant="onboardingItem" onClick={() => window.api?.openExternal?.(CONNECT_URL)}>

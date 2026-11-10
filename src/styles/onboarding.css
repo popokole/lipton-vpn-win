@@ -495,9 +495,6 @@
   border: 1px solid color-mix(in srgb, var(--st-dot) 50%, transparent);
 }
 .onb-item-chev { color: var(--c-text-3); }
-.onb-meter { display: flex; gap: 3px; flex-shrink: 0; }
-.onb-meter > i { display: block; width: 7px; height: 12px; border-radius: 3px; background: var(--c-fill-3); }
-.onb-meter > i.is-on { background: linear-gradient(180deg, var(--st-fill-1), var(--st-fill-2)); box-shadow: 0 0 6px var(--st-glow); }
 
 .onb-steps { list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .onb-steps li {

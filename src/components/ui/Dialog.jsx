@@ -27,11 +27,10 @@ export default function ConfirmDialog({
   useEffect(() => {
     if (!open) return undefined
     const onKey = e => {
-      if (e.key === 'Escape' && !busy) {
-        e.preventDefault()
-        e.stopPropagation()
-        onCancel?.()
-      }
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      if (!busy) onCancel?.()
     }
     window.addEventListener('keydown', onKey, true)
     // фокус на «Отмена» — случайный Enter не подтвердит опасное действие

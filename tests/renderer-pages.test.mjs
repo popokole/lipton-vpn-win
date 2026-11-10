@@ -186,7 +186,7 @@ test('news: чип, дата, непрочитанные локально', () =
 })
 
 test('settings: устройства, аккаунт, домены, отмена подписки', () => {
-  assert.equal(lastSeenLabel(NOW - 60000, NOW), 'в сети')
+  assert.equal(lastSeenLabel(NOW - 60000, NOW), 'недавно')
   assert.match(lastSeenLabel(new Date(2026, 9, 8, 9, 5).getTime(), NOW), /^сегодня в 09:05$/)
   assert.match(lastSeenLabel(new Date(2026, 9, 7, 22, 14).getTime(), NOW), /^вчера в 22:14$/)
   assert.equal(lastSeenLabel(new Date(2026, 9, 3).getTime(), NOW), '3 октября')

@@ -10,7 +10,6 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-
     steps:
       - uses: actions/checkout@v4
 
@@ -25,16 +24,47 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build & publish
+      - name: Build Windows packages
+        id: package
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          WINDOWS_SIGNING_REQUIRED: ${{ vars.WINDOWS_SIGNING_REQUIRED }}
         run: |
+          $env:LIPTON_RELEASE_DIR = Join-Path $env:RUNNER_TEMP 'lipton-release'
+          "LIPTON_RELEASE_DIR=$env:LIPTON_RELEASE_DIR" >> $env:GITHUB_ENV
+          $builderArgs = @('--publish', 'never', "--config.directories.output=$env:LIPTON_RELEASE_DIR")
           if ($env:WIN_CSC_LINK) {
-            npm run dist -- --publish always --config.forceCodeSigning=true
+            $builderArgs += '--config.forceCodeSigning=true'
+            'signed=true' >> $env:GITHUB_OUTPUT
           } else {
+            if ($env:WINDOWS_SIGNING_REQUIRED -eq 'true' -or $env:WIN_CSC_KEY_PASSWORD) {
+              throw 'Code signing requires the WIN_CSC_LINK secret.'
+            }
             Write-Warning "Windows code signing is not configured"
-            npm run dist -- --publish always
+            'signed=false' >> $env:GITHUB_OUTPUT
           }
-          exit $LASTEXITCODE
+          npm run dist -- @builderArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify Windows packages
+        run: |
+          $requireSignature = '${{ steps.package.outputs.signed }}' -eq 'true'
+          ./scripts/verify-windows-release.ps1 -OutputDirectory $env:LIPTON_RELEASE_DIR -RequireSignature:$requireSignature
+
+      - name: Publish verified GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Release tag does not match package.json version $version."
+          }
+          $assets = @(
+            "$env:LIPTON_RELEASE_DIR/Lipton-VPN-Setup-$version.exe"
+            "$env:LIPTON_RELEASE_DIR/Lipton-VPN-Setup-$version.exe.blockmap"
+            "$env:LIPTON_RELEASE_DIR/LiptonVPN-$version-portable.exe"
+            "$env:LIPTON_RELEASE_DIR/latest.yml"
+          )
+          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --latest --title $version --notes-from-tag
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

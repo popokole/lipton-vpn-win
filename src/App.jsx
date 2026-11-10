@@ -15,6 +15,7 @@ import NewsPage from './pages/NewsPage'
 import SettingsPage from './pages/SettingsPage'
 import DomainsScreen from './screens/DomainsScreen'
 import EmailScreen from './screens/EmailScreen'
+import DevicesScreen from './screens/DevicesScreen'
 import PaymentsScreen from './screens/PaymentsScreen'
 import PaymentMethodScreen from './screens/PaymentMethodScreen'
 import PromoScreen from './screens/PromoScreen'
@@ -48,7 +49,7 @@ const DOWNLOAD_URL = 'https://liptonone.online/download/windows'
 const DEFAULT_BOT_URL = 'https://t.me/liptonvpn_bot'
 
 // Подэкраны настроек — во всю область контента.
-const SCREENS = new Set(['domains', 'email', 'history', 'payment', 'promo', 'support', 'kb', 'logs', 'privacy'])
+const SCREENS = new Set(['domains', 'email', 'devices', 'history', 'payment', 'promo', 'support', 'kb', 'logs', 'privacy'])
 
 // Окно без разделов (загрузка, знакомство, обязательное обновление) — тот же заголовок и свечение.
 function Frame({ maximized, onToggleMaximize, children, palette = 'active' }) {
@@ -547,6 +548,7 @@ export default function App() {
     switch (top.screen) {
       case 'domains': pageEl = <DomainsScreen {...screenProps} />; break
       case 'email': pageEl = <EmailScreen {...screenProps} />; break
+      case 'devices': pageEl = authed ? <DevicesScreen {...screenProps} onLogin={() => openAuth('login')} /> : null; break
       case 'history': pageEl = <PaymentsScreen {...screenProps} />; break
       case 'payment': pageEl = <PaymentMethodScreen {...screenProps} plan={plan} onPay={() => open('billing')} />; break
       case 'promo': pageEl = <PromoScreen {...screenProps} cheapest={cheapest} onPay={authed ? () => open('billing') : null} />; break

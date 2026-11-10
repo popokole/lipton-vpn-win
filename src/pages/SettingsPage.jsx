@@ -2,15 +2,12 @@ import { Checkbox, IconButton, LinkButton, RowButton } from '../components/ui/Pr
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Glass, Segmented, Button, Icon, Switch, Progress, ConfirmDialog } from '../components/ui'
 import { daysWord, rub, fmtMinSec } from '../lib/plan.mjs'
-import {
-  lastSeenLabel, deviceInfo, sinceLabel, initialOf, domainsWord, domainName, cancelWarning,
-} from '../lib/settings.mjs'
-import { SHOW_DEVICES } from '../lib/features.mjs'
+import { sinceLabel, initialOf, domainsWord, domainName, cancelWarning } from '../lib/settings.mjs'
 
 // Настройки (макеты new-pc-settings-full / -play): на ПК в них же профиль.
-// Слева — аккаунт, подписка, устройства, приложение, уведомления, оплата;
+// Слева — аккаунт, подписка, приложение, уведомления, оплата;
 // справа — VPN, помощь, о приложении, «Отменить подписку» и «Выйти».
-// Подэкраны (new-scr-*: домены, почта, история платежей, способ оплаты,
+// Подэкраны (new-scr-*: домены, почта, устройства, история платежей, способ оплаты,
 // промокод, чат, база знаний, логи, политика; проверка соединения, оплата,
 // лицензии) — через onOpen.
 
@@ -35,12 +32,11 @@ const STATUS_BADGE = {
   none: 'Нет подписки',
 }
 
-function Section({ title, meta, children }) {
+function Section({ title, children }) {
   return (
     <section className="set-section">
       <div className="set-overline-row">
         <span className="ui-overline">{title}</span>
-        {meta != null && <span className="set-overline-meta num">{meta}</span>}
       </div>
       {children}
     </section>
@@ -162,6 +158,13 @@ function AccountCard({ profile, identities, onUnlinkTelegram, onLogin, authed, g
           : <Button size="sm" onClick={() => window.api?.openExternal?.(`${SITE}/app/settings`)}>Привязать</Button>}
       />
       <Row
+        icon="desktop"
+        title="Устройства"
+        sub="Регистрации на подписке"
+        chevron
+        onClick={() => onOpen('devices')}
+      />
+      <Row
         icon="gift"
         title="Пригласить друга"
         sub="Бонусные дни за друзей · на сайте"
@@ -223,53 +226,6 @@ function SubscriptionCard({ plan, view, onRenew, onChange, onSync, syncing }) {
   )
 }
 
-// ─── Устройства ─────────────────────────────────────────────────────────────
-function DevicesCard({ devices, error, loading, myHwid, onRevoke, onRelink, onRevokeAll }) {
-  const list = devices || []
-  return (
-    <Glass className="set-card ui-rise" style={{ '--i': 3 }}>
-      {loading && !list.length && <div className="set-row set-row--muted"><span className="ui-spinner ui-spinner--sm" aria-hidden="true" /><span>Загружаем устройства…</span></div>}
-      {error && !list.length && <div className="set-row set-row--muted">{error}</div>}
-      {!loading && !error && !list.length && (
-        <div className="set-row set-row--muted">Устройства появятся после первого подключения</div>
-      )}
-      {list.map(d => {
-        const info = deviceInfo(d)
-        const mine = myHwid && d.hwid === myHwid
-        const seen = lastSeenLabel(d.updated_at)
-        return (
-          <Row
-            key={d.hwid}
-            icon={info.desktop ? 'desktop' : 'phone'}
-            iconTone={mine ? 'accent' : ''}
-            title={info.title}
-            sub={mine
-              ? <><b className="set-mine">Это устройство</b>{seen ? ` · ${seen}` : ''}</>
-              : [info.platform, seen].filter(Boolean).join(' · ')}
-            right={
-              <IconButton label={`Отвязать ${info.title} className="set-revoke"`} title="Отвязать устройство" onClick={() => onRevoke(d, info, mine)}>
-                <Icon name="unlink" size={16} stroke={1.8} />
-              </IconButton>
-            }
-          />
-        )
-      })}
-      <Row
-        icon="link"
-        title="Обновить ссылку"
-        sub={<span className="set-warn-line"><Icon name="warning" size={12} stroke={2} />Все устройства отвяжутся</span>}
-        right={<Button size="sm" onClick={onRelink}>Обновить</Button>}
-      />
-      {list.length > 0 && (
-        <RowButton variant="dangerRow" onClick={onRevokeAll}>
-          <Icon name="unlink" size={16} stroke={1.8} />
-          <span>Отвязать все устройства</span>
-        </RowButton>
-      )}
-    </Glass>
-  )
-}
-
 // Уведомления аккаунта: /me/notifications → три переключателя.
 function normalizeNotif(p) {
   return { payment_reminders: !!p?.payment_reminders, news: !!p?.news, telegram_messages: !!p?.telegram_messages }
@@ -294,7 +250,6 @@ export default function SettingsPage({
   const [profile, setProfile] = useState(null)
   const [identities, setIdentities] = useState([])
   const [txCount, setTxCount] = useState(null)
-  const [dev, setDev] = useState({ loading: false, devices: null, limit: null, hwid: null, error: '' })
   const [syncing, setSyncing] = useState(false)
   const [notif, setNotif] = useState(null) // null — нет ручки или ещё грузим
 
@@ -327,16 +282,6 @@ export default function SettingsPage({
     window.api?.getBypassDomains?.().then(d => { if (alive.current) setDomains(Array.isArray(d) ? d : []) }).catch(() => {})
   }, [sheet])
 
-  const loadDevices = useCallback(() => {
-    if (!window.api?.accountDevices) return
-    setDev(d => ({ ...d, loading: true, error: '' }))
-    window.api.accountDevices().then(r => {
-      if (!alive.current) return
-      if (r?.success) setDev({ loading: false, devices: r.devices || [], limit: r.device_limit || null, hwid: r.hwid || null, error: '' })
-      else setDev(d => ({ ...d, loading: false, error: r?.error || 'Не удалось загрузить устройства' }))
-    }).catch(() => { if (alive.current) setDev(d => ({ ...d, loading: false, error: 'Не удалось загрузить устройства' })) })
-  }, [])
-
   useEffect(() => {
     if (!authed) return
     const api = window.api
@@ -364,8 +309,6 @@ export default function SettingsPage({
     if (!r?.success) { setNotif(prev); toast(r?.error || 'Не удалось сохранить', 'error'); return }
     if (r.prefs) setNotif(normalizeNotif(r.prefs))
   }
-
-  useEffect(() => { if (hasAccess && SHOW_DEVICES) loadDevices() }, [hasAccess, loadDevices])
 
   const setPref = (key, setter) => async (value) => {
     setPrefs(p => ({ ...p, [key]: value }))
@@ -434,15 +377,6 @@ export default function SettingsPage({
   const confirmDialog = () => {
     const api = window.api
     switch (dialog?.kind) {
-      case 'relink':
-        return runDialog(() => api.accountRelink(Number.isInteger(view?.link_version) ? view.link_version : undefined), () => {
-          toast('Ссылка обновлена — подключите остальные устройства заново')
-          loadDevices()
-        })
-      case 'revoke':
-        return runDialog(() => api.accountRevokeDevice(dialog.hwid), () => { toast('Устройство отвязано'); loadDevices() })
-      case 'revokeAll':
-        return runDialog(() => api.accountRevokeAllDevices(), () => { toast('Все устройства отвязаны'); loadDevices() })
       case 'unlinkTg':
         return runDialog(() => api.accountUnlinkIdentity(dialog.id), () => {
           toast('Telegram отвязан')
@@ -470,32 +404,10 @@ export default function SettingsPage({
   })()
 
   const domainList = domains.map(domainName).filter(Boolean)
-  const devCount = dev.devices ? dev.devices.length : null
-  const devMeta = devCount != null ? `${devCount}${dev.limit ? ` из ${dev.limit}` : ''}` : null
 
   let dialogProps = null
   if (dialog) {
     switch (dialog.kind) {
-      case 'relink':
-        dialogProps = {
-          icon: 'link', tone: 'warn', title: 'Обновить ссылку?', confirmLabel: 'Обновить ссылку',
-          body: 'Старая ссылка и все устройства на ней отключатся, подключите их заново. Это устройство переподключится само.',
-        }
-        break
-      case 'revoke':
-        dialogProps = {
-          icon: 'unlink', tone: 'warn', title: 'Отвязать устройство?', confirmLabel: 'Отвязать',
-          body: dialog.mine
-            ? 'Это устройство освободит место в подписке. VPN на нём продолжит работать, пока вы не обновите подписку или ссылку.'
-            : `«${dialog.title}» освободит место в подписке. Подключиться снова можно, если есть свободные места.`,
-        }
-        break
-      case 'revokeAll':
-        dialogProps = {
-          icon: 'unlink', tone: 'warn', title: 'Отвязать все устройства?', confirmLabel: 'Отвязать все',
-          body: 'Все места в подписке освободятся, ссылка не изменится. Устройства смогут подключиться снова.',
-        }
-        break
       case 'unlinkTg':
         dialogProps = {
           icon: 'send', tone: 'warn', title: 'Отвязать Telegram?', confirmLabel: 'Отвязать',
@@ -559,20 +471,6 @@ export default function SettingsPage({
                 onSync={syncSub}
                 onRenew={() => onOpen('billing')}
                 onChange={() => onOpen('billing', { mode: 'change' })}
-              />
-            </Section>
-          )}
-
-          {SHOW_DEVICES && hasAccess && (
-            <Section title="Устройства" meta={devMeta}>
-              <DevicesCard
-                devices={dev.devices}
-                error={dev.error}
-                loading={dev.loading}
-                myHwid={dev.hwid}
-                onRevoke={(d, info, mine) => openDialog({ kind: 'revoke', hwid: d.hwid, title: info.title, mine })}
-                onRelink={() => openDialog({ kind: 'relink' })}
-                onRevokeAll={() => openDialog({ kind: 'revokeAll' })}
               />
             </Section>
           )}
