@@ -66,5 +66,5 @@ jobs:
             "$env:LIPTON_RELEASE_DIR/LiptonVPN-$version-portable.exe"
             "$env:LIPTON_RELEASE_DIR/latest.yml"
           )
-          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --latest --title $version --notes-from-tag
+          gh release create $env:GITHUB_REF_NAME @assets --verify-tag --latest --title $version --notes-from-tag
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
