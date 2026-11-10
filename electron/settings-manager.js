@@ -22,7 +22,7 @@ const DEFAULTS = {
   // Режим «весь трафик» (TUN через sing-box) — по умолчанию. false = только браузеры (системный прокси).
   tunMode: true,
   // Скрытый запасной вариант: старое ядро xray (+tun2socks). Уберём через релиз.
-  coreLegacy: false,
+  coreLegacy: true,
   // Тема интерфейса: 'dark' | 'light' | 'system'. Новый ключ — версия схемы не меняется:
   // у старых settings.json его просто нет, и берётся значение по умолчанию.
   theme: DEFAULT_THEME,
@@ -31,7 +31,7 @@ const DEFAULTS = {
 }
 
 // Версия схемы настроек. 2 — новое ядро sing-box и TUN по умолчанию.
-const SETTINGS_VERSION = 2
+const SETTINGS_VERSION = 3
 
 function ensure() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -176,8 +176,13 @@ function migrate() {
     // До 2.1 по умолчанию был системный прокси — UDP/WebRTC и часть программ шли мимо VPN.
     // Один раз переводим всех на «весь трафик»; дальнейший выбор пользователя уважаем.
     raw.tunMode = true
-    if (raw.coreLegacy === undefined) raw.coreLegacy = false
     applied.push('tunMode→true')
+  }
+  if (from < 3) {
+    // 10.11.2026: Xray 26.10 на нодах ломает проверку Reality в sing-box («reality verification
+    // failed»), а xray-ядро подключается. Всех переводим на xray, пока sing-box не починят.
+    raw.coreLegacy = true
+    applied.push('coreLegacy→true')
   }
   raw.settingsVersion = SETTINGS_VERSION
   writeStored({ ...DEFAULTS, ...raw })

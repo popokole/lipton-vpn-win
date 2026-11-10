@@ -456,9 +456,9 @@ test('миграция: один раз включает «весь трафик
   delete require.cache[require.resolve('../electron/settings-manager')]
   const sm = require('../electron/settings-manager')
   try {
-    assert.deepEqual(sm.migrate(), ['tunMode→true'])
+    assert.deepEqual(sm.migrate(), ['tunMode→true', 'coreLegacy→true'])
     assert.equal(sm.get('tunMode'), true)
-    assert.equal(sm.get('coreLegacy'), false)
+    assert.equal(sm.get('coreLegacy'), true)
     assert.equal(sm.get('bypassRu'), false)
     assert.equal(sm.get('activeServerId'), 'x')
     assert.equal(sm.get('settingsVersion'), sm.SETTINGS_VERSION)

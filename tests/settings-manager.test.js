@@ -59,7 +59,7 @@ test('миграция при битом основном файле берёт 
   delete stored.settingsVersion
   fs.writeFileSync(FILE + '.bak', JSON.stringify(stored))
   fs.writeFileSync(FILE, Buffer.alloc(100))
-  assert.deepEqual(sm.migrate(), ['tunMode→true'])
+  assert.deepEqual(sm.migrate(), ['tunMode→true', 'coreLegacy→true'])
   const saved = JSON.parse(fs.readFileSync(FILE, 'utf-8'))
   assert.equal(saved.auth.refresh, 'r4', 'вход не потерян')
   assert.equal(saved.settingsVersion, sm.SETTINGS_VERSION)

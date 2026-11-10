@@ -23,7 +23,7 @@ const isDev = process.env.ELECTRON_IS_DEV === '1'
 
 // ─── Ядро VPN ─────────────────────────────────────────────────────────────────
 // Основное — sing-box (singbox-manager). Старое xray+tun2socks (vpn-manager) —
-// скрытый запасной вариант по настройке coreLegacy, на один релиз.
+// запасной вариант по настройке coreLegacy; с 2.2.10 включён по умолчанию (sing-box не проходит Reality у Xray 26.10).
 
 let activeCore = null
 

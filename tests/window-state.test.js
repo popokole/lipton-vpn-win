@@ -107,8 +107,8 @@ test('настройки: тема и размер окна — новые кл�
     const out = JSON.parse(execFileSync(process.execPath, ['-e', script], {
       env: { ...process.env, LIPTON_DATA_DIR: dir }, encoding: 'utf-8',
     }))
-    assert.deepEqual(out.applied, [])
-    assert.equal(out.version, 2)
+    assert.deepEqual(out.applied, ['coreLegacy→true'])
+    assert.equal(out.version, 3)
     assert.equal(out.theme, ws.DEFAULT_THEME)
     assert.equal(out.bounds, null)
     assert.equal(out.tun, false)
