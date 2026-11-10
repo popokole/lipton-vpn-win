@@ -36,12 +36,13 @@ function streamSettings(s) {
     ss.xhttpSettings = {
       path: s.path || '/',
       host: s.host || '',
-      mode: 'auto',
+      mode: s.mode || 'auto',
     }
   } else if (s.network === 'splithttp') {
     ss.splithttpSettings = {
       path: s.path || '/',
       host: s.host || '',
+      mode: s.mode || 'auto',
     }
   } else if (s.network === 'tcp' && s.host) {
     ss.tcpSettings = {

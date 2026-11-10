@@ -1,0 +1,126 @@
+const assert = require('node:assert/strict')
+const { EventEmitter } = require('node:events')
+const fs = require('node:fs')
+const Module = require('node:module')
+const os = require('node:os')
+const path = require('node:path')
+const { PassThrough } = require('node:stream')
+const test = require('node:test')
+const { parseUri } = require('../electron/subscription-manager')
+const { generateConfig } = require('../electron/xray-config')
+
+const server = { protocol: 'vless', uuid: 'test', address: 'example.com', port: 443 }
+
+async function withManager(run) {
+  const filename = require.resolve('../electron/vpn-manager')
+  const originalLoad = Module._load
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lipton-legacy-test-'))
+  const calls = []
+  const mock = {
+    tun: {
+      resolveEndpoint: async () => '192.0.2.10',
+      start: async () => { calls.push('tun start') },
+      stop: async () => { calls.push('tun stop') },
+    },
+    spawn: () => {
+      const child = new EventEmitter()
+      child.pid = 100
+      child.exitCode = null
+      child.signalCode = null
+      child.stdout = new PassThrough()
+      child.stderr = new PassThrough()
+      child.kill = () => {
+        calls.push('xray stop')
+        child.signalCode = 'SIGTERM'
+        queueMicrotask(() => child.emit('exit', null, child.signalCode))
+        return true
+      }
+      queueMicrotask(() => child.stdout.write('[Warning] Xray 26.3.27 started\n'))
+      return child
+    },
+  }
+  delete require.cache[filename]
+  Module._load = function (id, parent, ...args) {
+    if (parent?.filename === filename) {
+      if (id === 'child_process') return { spawn: (...params) => mock.spawn(...params) }
+      if (id === './tun-manager') return mock.tun
+      if (id === './system-proxy') {
+        return {
+          setProxy: () => { calls.push('proxy set'); return true },
+          clearProxy: () => calls.push('proxy clear'),
+          getProxyServer: () => '127.0.0.1:10809',
+        }
+      }
+    }
+    return originalLoad.call(this, id, parent, ...args)
+  }
+  let manager
+  try {
+    manager = require(filename)
+  } finally {
+    Module._load = originalLoad
+  }
+  try {
+    await run(manager, { calls, dataDir, mock })
+  } finally {
+    await manager.disconnect()
+    delete require.cache[filename]
+    fs.rmSync(dataDir, { recursive: true, force: true })
+  }
+}
+
+test('Xray startup does not count as a working VPN', () => withManager(async (manager, { calls, dataDir }) => {
+  const result = await manager.connect(server, {
+    dataDir,
+    probeLegacy: async () => { throw new Error('no tunnel traffic') },
+  })
+  assert.deepEqual(result, { success: false, error: 'no tunnel traffic' })
+  assert.equal(manager.getStatus(), 'disconnected')
+  assert.deepEqual(calls, ['xray stop'])
+}))
+
+test('failed TUN is rolled back without falling back to system proxy', () => withManager(async (manager, { calls, dataDir, mock }) => {
+  mock.tun.start = async () => { throw new Error('route failed') }
+  const result = await manager.connect(server, { dataDir, tunMode: true, probeLegacy: async () => {} })
+  assert.deepEqual(result, { success: false, error: 'route failed' })
+  assert.equal(manager.getStatus(), 'disconnected')
+  assert.deepEqual(calls, ['tun stop', 'xray stop'])
+}))
+
+test('TUN reports connected only after both traffic probes', () => withManager(async (manager, { calls, dataDir }) => {
+  const result = await manager.connect(server, {
+    dataDir,
+    tunMode: true,
+    probeLegacy: async mode => {
+      assert.equal(manager.getStatus(), 'connecting')
+      calls.push('probe ' + mode)
+    },
+  })
+  assert.deepEqual(result, { success: true })
+  assert.equal(manager.getStatus(), 'connected')
+  assert.deepEqual(calls, ['probe proxy', 'tun start', 'probe tun'])
+}))
+
+test('disconnect cancels an in-flight probe and cleans up Xray', () => withManager(async (manager, { calls, dataDir }) => {
+  let probing
+  const enteredProbe = new Promise(resolve => { probing = resolve })
+  const connecting = manager.connect(server, {
+    dataDir,
+    probeLegacy: async (_mode, _port, signal) => {
+      probing()
+      await new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
+    },
+  })
+  await enteredProbe
+  await manager.disconnect()
+  assert.equal((await connecting).success, false)
+  assert.equal(manager.getStatus(), 'disconnected')
+  assert.deepEqual(calls, ['xray stop'])
+}))
+
+test('Xray keeps the XHTTP packet-up mode from the subscription', () => {
+  const parsed = parseUri('vless://test@example.com:2053?type=xhttp&security=reality&mode=packet-up&path=%2Fstream')
+  const transport = generateConfig(parsed).outbounds[0].streamSettings.xhttpSettings
+  assert.equal(transport.mode, 'packet-up')
+  assert.equal(transport.path, '/stream')
+})

@@ -47,11 +47,10 @@ const vpnManager = {
   },
   // Режим работающего ядра: 'tun' | 'proxy'. У старого ядра — по настройке.
   getMode() {
-    if ((activeCore || pickCore()) === singboxCore && singboxCore.getMode()) return singboxCore.getMode()
-    return settingsManager.get('tunMode') !== false ? 'tun' : 'proxy'
+    return (activeCore || pickCore()).getMode() || (settingsManager.get('tunMode') !== false ? 'tun' : 'proxy')
   },
   isKillSwitchEngaged() {
-    return (activeCore || pickCore()) === singboxCore && singboxCore.isKillSwitchEngaged()
+    return (activeCore || pickCore()).isKillSwitchEngaged()
   },
   setKillSwitch(enabled) {
     legacyCore.setKillSwitch(enabled)
@@ -1597,9 +1596,13 @@ async function startDailyTrial() {
 // Транспорт для проверки: отдельная сессия в памяти, без кэша и старых соединений.
 // TUN — напрямую через систему (трафик сам уходит в туннель), прокси — через
 // локальный вход ядра, как у браузеров.
-async function makeCheckFetcher(mode) {
-  const ses = session.fromPartition('lipton-connection-check')
-  const httpPort = settingsManager.get('httpPort') || 10809
+async function makeCheckFetcher(mode, {
+  partition = 'lipton-connection-check',
+  httpPort = settingsManager.get('httpPort') || 10809,
+  signal,
+  expectedStatus,
+} = {}) {
+  const ses = session.fromPartition(partition)
   if (mode === 'proxy') {
     await ses.setProxy({ mode: 'fixed_servers', proxyRules: `127.0.0.1:${httpPort}`, proxyBypassRules: '<-loopback>' })
   } else {
@@ -1609,14 +1612,39 @@ async function makeCheckFetcher(mode) {
   await ses.clearHostResolverCache()
   await ses.clearCache()
   return async (url, timeoutMs) => {
+    const timeout = AbortSignal.timeout(timeoutMs)
     const res = await ses.fetch(url, {
       cache: 'no-store',
       credentials: 'omit',
       headers: { 'Cache-Control': 'no-cache' },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok || (expectedStatus && res.status !== expectedStatus)) throw new Error(`HTTP ${res.status}`)
     return (await res.text()).slice(0, 4096)
+  }
+}
+
+async function probeLegacy(mode, httpPort, signal) {
+  const probe = new AbortController()
+  const fetchText = await makeCheckFetcher(mode, {
+    partition: 'lipton-xray-probe',
+    httpPort,
+    signal: AbortSignal.any([signal, probe.signal]),
+    expectedStatus: 204,
+  })
+  try {
+    await Promise.any([
+      fetchText('https://www.gstatic.com/generate_204', 5000),
+      fetchText('https://cp.cloudflare.com/generate_204', 5000),
+    ])
+    signal.throwIfAborted()
+  } catch {
+    signal.throwIfAborted()
+    throw new Error(mode === 'tun'
+      ? 'Через VPN-адаптер не проходит трафик. Проверьте настройки сети или выберите «Только браузер».'
+      : 'Сервер не отвечает через VPN. Попробуйте другой сервер или обновите подписку.')
+  } finally {
+    probe.abort()
   }
 }
 
@@ -1644,6 +1672,7 @@ function buildConnectOptions(settings) {
     socksPort: settings.socksPort || 10808,
     httpPort: settings.httpPort || 10809,
     dataDir: settingsManager.getDataDir(),
+    probeLegacy,
     bypassRu: settings.bypassRu !== false,
     bypassDomains: settings.bypassDomains || [],
     tunMode: settings.tunMode !== false,
@@ -1877,5 +1906,6 @@ app.on('before-quit', (event) => {
 
 // Аварийный выход процесса: не оставляем ядро, прокси и блокировку.
 process.on('exit', () => {
+  try { legacyCore.emergencyCleanupSync() } catch {}
   try { singboxCore.emergencyCleanupSync() } catch {}
 })

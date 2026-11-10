@@ -6,10 +6,12 @@ const REG = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settin
 
 function notifyWininet() {
   try {
-    spawn('powershell', [
+    const child = spawn('powershell', [
       '-WindowStyle', 'Hidden', '-Command',
       `$t=Add-Type -PassThru -TypeDefinition 'using System;using System.Runtime.InteropServices;public class W{[DllImport(\\"wininet.dll\\")]public static extern bool InternetSetOption(IntPtr a,int b,IntPtr c,int d);}';$t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0);$t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0)`,
-    ], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    ], { detached: true, stdio: 'ignore', windowsHide: true })
+    child.on('error', () => {})
+    child.unref()
   } catch { /* non-critical */ }
 }
 
@@ -18,16 +20,18 @@ function notifyWininet() {
 function setProxy(host, port, { bypassRu = true } = {}) {
   const override = 'localhost;127.*;10.*;172.16.*;192.168.*' + (bypassRu ? ';*.ru;*.рф' : '')
   try {
-    execSync(`reg add "${REG}" /v ProxyEnable /t REG_DWORD /d 1 /f`, { stdio: 'ignore', windowsHide: true })
     execSync(`reg add "${REG}" /v ProxyServer /t REG_SZ /d "${host}:${port}" /f`, { stdio: 'ignore', windowsHide: true })
     execSync(
       `reg add "${REG}" /v ProxyOverride /t REG_SZ /d "${override}" /f`,
       { stdio: 'ignore', windowsHide: true }
     )
+    execSync(`reg add "${REG}" /v ProxyEnable /t REG_DWORD /d 1 /f`, { stdio: 'ignore', windowsHide: true })
     notifyWininet()
     console.log(`[VPN] Прокси установлен: ${host}:${port}`)
+    return true
   } catch (e) {
     console.error('[VPN] Ошибка установки прокси:', e.message)
+    return false
   }
 }
 

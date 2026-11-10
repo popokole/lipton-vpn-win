@@ -132,6 +132,7 @@ function parseVless(uri) {
       headerType: p.headerType || '',
       alpn: p.alpn || '',
       serviceName: p.serviceName || '',
+      mode: ['auto', 'packet-up', 'stream-up', 'stream-one'].includes(p.mode) ? p.mode : 'auto',
       ping: null,
     }
   } catch { return null }

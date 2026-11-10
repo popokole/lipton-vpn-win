@@ -1,5 +1,3 @@
-// Старое ядро (xray + tun2socks). Оставлено скрытым запасным вариантом
-// (настройка coreLegacy) на один релиз; основное ядро — singbox-manager.js.
 const { spawn } = require('child_process')
 const path = require('path')
 const fs = require('fs')
@@ -8,10 +6,12 @@ const { generateConfig } = require('./xray-config')
 const logger = require('./logger')
 const tunManager = require('./tun-manager')
 
-let xrayProc = null
+let active = null
+let pending = null
+let operations = Promise.resolve()
 let status = 'disconnected'
 let killSwitchEnabled = false
-let tunModeActive = false
+let killSwitchEngaged = false
 
 // ─── xray binary / geo-data paths ────────────────────────────────────────────
 
@@ -39,174 +39,187 @@ function findGeoDir() {
   return path.dirname(findXray())
 }
 
-// ─── System proxy ─────────────────────────────────────────────────────────────
+const { setProxy, clearProxy, getProxyServer } = require('./system-proxy')
 
-const { setProxy, clearProxy } = require('./system-proxy')
-
-// ─── Kill Switch ──────────────────────────────────────────────────────────────
-
-function setKillSwitch(enabled) {
-  killSwitchEnabled = enabled
-  console.log(`[Kill Switch] ${enabled ? 'включён' : 'выключен'}`)
+function enqueue(run) {
+  const operation = operations.then(run)
+  operations = operation.catch(() => {})
+  return operation
 }
 
-// ─── Connect / Disconnect ─────────────────────────────────────────────────────
-
-async function connect(server, opts = {}) {
-  await disconnect()
-
-  let xrayPath
-  try {
-    xrayPath = findXray()
-    console.log('[VPN] xray найден:', xrayPath)
-  } catch (e) {
-    console.error('[VPN]', e.message)
-    throw e
-  }
-
-  const geoDir = findGeoDir()
-  const dataDir = opts.dataDir || path.join(os.homedir(), 'AppData', 'Local', 'LiptonVPN')
-  const configPath = path.join(dataDir, 'xray', 'config.json')
-
-  fs.mkdirSync(path.dirname(configPath), { recursive: true })
-
-  const config = generateConfig(server, {
-    socksPort: opts.socksPort || 10808,
-    httpPort: opts.httpPort || 10809,
-    bypassRu: opts.bypassRu !== false,
-    bypassDomains: opts.bypassDomains || [],
-    adBlock: opts.adBlock === true,
-  })
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
-
-  console.log(`[VPN] Подключение к: ${server.remark || server.address} (${server.protocol})`)
-  console.log(`[VPN] Сервер: ${server.address}:${server.port}, httpPort=${opts.httpPort || 10809}`)
-  console.log(`[VPN] Обход РФ: ${opts.bypassRu !== false ? 'вкл' : 'выкл'}`)
-  console.log(`[VPN] Конфиг: ${configPath}`)
-
-  return new Promise((resolve) => {
-    status = 'connecting'
-
-    xrayProc = spawn(xrayPath, ['-config', configPath], {
-      env: { ...process.env, XRAY_LOCATION_ASSET: geoDir },
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
-
-    let resolved = false
-
-    const done = async (success, error) => {
-      if (resolved) return
-      resolved = true
-      if (success) {
-        status = 'connected'
-        if (opts.tunMode) {
-          try {
-            await tunManager.start(server.address, opts.socksPort || 10808)
-            tunModeActive = true
-            console.log('[VPN] Подключено (TUN mode)')
-          } catch (e) {
-            console.error('[TUN] Ошибка запуска TUN, откат на proxy:', e.message)
-            setProxy('127.0.0.1', opts.httpPort || 10809)
-            tunModeActive = false
-          }
-        } else {
-          setProxy('127.0.0.1', opts.httpPort || 10809)
-          tunModeActive = false
-          console.log('[VPN] Подключено (proxy mode)')
-        }
-        resolve({ success: true })
-      } else {
-        status = 'error'
-        console.error('[VPN] Ошибка подключения:', error)
-        resolve({ success: false, error })
-      }
-    }
-
-    xrayProc.stdout.on('data', d => {
-      const lines = d.toString().trim().split('\n')
-      for (const line of lines) {
-        const t = line.trim()
-        if (t) logger.verbose('[xray stdout]', t)
-        if (t.includes('started') || t.includes('Running') || t.includes('[Warning]')) done(true)
-      }
-    })
-
-    xrayProc.stderr.on('data', d => {
-      const lines = d.toString().trim().split('\n')
-      for (const line of lines) {
-        const t = line.trim()
-        if (!t) continue
-        logger.verbose('[xray stderr]', t)
-        const low = t.toLowerCase()
-        if (low.includes('failed') || low.includes('error') || (low.includes('dial') && low.includes('refused'))) {
-          console.error('[VPN] Ошибка xray →', t)
-          done(false, t)
-        }
-      }
-    })
-
-    xrayProc.on('error', err => {
-      console.error('[VPN] Ошибка запуска xray:', err.message)
-      done(false, err.message)
-    })
-
-    xrayProc.on('exit', (code) => {
-      console.log(`[VPN] xray завершён, код ${code}, статус был: ${status}`)
-      if (!resolved) {
-        console.error(`[VPN] xray завершился до подключения, код: ${code}`)
-        done(false, `xray завершился с кодом ${code}`)
-      }
-      xrayProc = null
-      if (status === 'connected') {
-        status = 'disconnected'
-        if (tunModeActive) {
-          tunModeActive = false
-          tunManager.stop().catch(() => {})
-          opts.onUnexpectedDisconnect?.()
-        } else if (killSwitchEnabled) {
-          setProxy('127.0.0.1', 1)
-          console.log('[Kill Switch] Активирован — трафик заблокирован')
-          opts.onKillSwitch?.()
-        } else {
-          clearProxy()
-          opts.onUnexpectedDisconnect?.()
-        }
-      }
-    })
-
-    // Assume success after 6s if no error
-    setTimeout(() => done(true), 6000)
-  })
-}
-
-async function disconnect() {
-  if (tunModeActive) {
-    tunModeActive = false
-    await tunManager.stop()
-  } else {
-    clearProxy()
-  }
-  if (!xrayProc) { status = 'disconnected'; return }
-  status = 'disconnecting'
-  console.log('[VPN] Отключение...')
-
+function stopChild(proc) {
+  if (!proc?.pid || proc.exitCode !== null || proc.signalCode !== null) return Promise.resolve()
   return new Promise(resolve => {
-    const proc = xrayProc
-    xrayProc = null
-
     const finish = () => {
-      status = 'disconnected'
-      console.log('[VPN] Отключено')
+      clearTimeout(timer)
+      proc.removeListener('exit', finish)
       resolve()
     }
-
+    const timer = setTimeout(finish, 2000)
     proc.once('exit', finish)
-    try { proc.kill() } catch { finish() }
-    setTimeout(() => { try { process.kill(proc.pid, 'SIGKILL') } catch {} finish() }, 3000)
+    if (!proc.kill()) finish()
   })
 }
 
-function getStatus() { return status }
+function clearOwnedProxy(httpPort) {
+  if ([`127.0.0.1:${httpPort}`, '127.0.0.1:1'].includes(getProxyServer())) clearProxy()
+}
 
-module.exports = { connect, disconnect, getStatus, clearProxy, setKillSwitch }
+async function tearDown() {
+  const session = active
+  active = null
+  if (session?.mode === 'tun') await tunManager.stop()
+  if (session?.proxySet || killSwitchEngaged) clearOwnedProxy(session?.httpPort)
+  killSwitchEngaged = false
+  await stopChild(session?.proc)
+  status = 'disconnected'
+}
+
+function waitForXray(proc, signal) {
+  return new Promise((resolve, reject) => {
+    let tail = ''
+    const onData = chunk => {
+      tail = (tail + chunk.toString()).slice(-2048)
+      if (/\bXray [^\r\n]*\bstarted\b/i.test(tail)) finish()
+    }
+    const onError = error => finish(new Error('Не удалось запустить Xray: ' + error.message))
+    const onExit = code => finish(new Error('Xray завершился до подключения, код: ' + code))
+    const onAbort = () => finish(signal.reason)
+    const timer = setTimeout(() => finish(new Error('Xray не запустился за 8 секунд')), 8000)
+
+    function finish(error) {
+      clearTimeout(timer)
+      proc.stdout.removeListener('data', onData)
+      proc.stderr.removeListener('data', onData)
+      proc.removeListener('error', onError)
+      proc.removeListener('exit', onExit)
+      signal.removeEventListener('abort', onAbort)
+      if (error) reject(error)
+      else resolve()
+    }
+
+    if (signal.aborted) return onAbort()
+    proc.stdout.on('data', onData)
+    proc.stderr.on('data', onData)
+    proc.once('error', onError)
+    proc.once('exit', onExit)
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+function unexpectedExit(session, opts) {
+  if (active !== session) return
+  if (status === 'connecting') {
+    session.controller.abort(new Error('Ядро или виртуальный адаптер VPN остановились во время подключения'))
+    return
+  }
+  if (status !== 'connected') return
+
+  enqueue(async () => {
+    if (active !== session) return
+    await tearDown()
+    if (session.mode === 'proxy' && killSwitchEnabled && setProxy('127.0.0.1', 1, { bypassRu: false })) {
+      killSwitchEngaged = true
+      opts.onKillSwitch?.()
+    } else {
+      opts.onUnexpectedDisconnect?.()
+    }
+  }).catch(error => console.warn('[VPN] Ошибка отключения:', error.message))
+}
+
+function connect(server, opts = {}) {
+  pending?.abort(new Error('Подключение отменено'))
+  const controller = new AbortController()
+  pending = controller
+  const { signal } = controller
+
+  return enqueue(async () => {
+    try {
+      signal.throwIfAborted()
+      await tearDown()
+      signal.throwIfAborted()
+      status = 'connecting'
+
+      const xrayPath = findXray()
+      const geoDir = findGeoDir()
+      const socksPort = opts.socksPort || 10808
+      const httpPort = opts.httpPort || 10809
+      const mode = opts.tunMode ? 'tun' : 'proxy'
+      const dataDir = opts.dataDir || path.join(os.homedir(), 'AppData', 'Local', 'LiptonVPN')
+      const configPath = path.join(dataDir, 'xray', 'config.json')
+      const endpoint = mode === 'tun' ? await tunManager.resolveEndpoint(server.address) : null
+      signal.throwIfAborted()
+      const config = generateConfig(server, {
+        socksPort,
+        httpPort,
+        bypassRu: opts.bypassRu !== false,
+        bypassDomains: opts.bypassDomains || [],
+        adBlock: opts.adBlock === true,
+      })
+      if (endpoint) {
+        const outbound = config.outbounds[0]
+        const destination = (outbound.settings.vnext || outbound.settings.servers)[0]
+        destination.address = endpoint
+        if (outbound.streamSettings.tlsSettings) outbound.streamSettings.tlsSettings.serverName ||= server.address
+        const xhttp = outbound.streamSettings.xhttpSettings || outbound.streamSettings.splithttpSettings
+        if (xhttp) xhttp.host ||= server.address
+      }
+      fs.mkdirSync(path.dirname(configPath), { recursive: true })
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+      console.log(`[VPN] Подключение к ${server.remark || server.address} через Xray (${mode})`)
+
+      const proc = spawn(xrayPath, ['-config', configPath], {
+        env: { ...process.env, XRAY_LOCATION_ASSET: geoDir },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+      const session = { proc, mode, httpPort, controller }
+      active = session
+      for (const stream of [proc.stdout, proc.stderr]) {
+        stream.on('data', chunk => logger.verbose('[xray]', chunk.toString().trim()))
+      }
+      proc.once('error', error => console.error('[VPN] Ошибка запуска Xray:', error.message))
+      await waitForXray(proc, signal)
+      proc.once('exit', () => unexpectedExit(session, opts))
+
+      if (typeof opts.probeLegacy !== 'function') throw new Error('Проверка VPN недоступна')
+      await opts.probeLegacy('proxy', httpPort, signal)
+      signal.throwIfAborted()
+      if (mode === 'tun') {
+        await tunManager.start(endpoint, socksPort, { signal, onExit: () => unexpectedExit(session, opts) })
+        await opts.probeLegacy('tun', httpPort, signal)
+      } else {
+        session.proxySet = setProxy('127.0.0.1', httpPort, { bypassRu: opts.bypassRu !== false })
+        if (!session.proxySet) throw new Error('Не удалось установить системный прокси Windows')
+      }
+      signal.throwIfAborted()
+      if (proc.exitCode !== null || proc.signalCode !== null) throw new Error('Xray остановился во время подключения')
+      status = 'connected'
+      console.log(`[VPN] Подключено (${mode})`)
+      return { success: true }
+    } catch (error) {
+      await tearDown()
+      console.error('[VPN] Ошибка подключения:', error.message)
+      return { success: false, error: error.message }
+    } finally {
+      if (pending === controller) pending = null
+    }
+  })
+}
+
+function disconnect() {
+  pending?.abort(new Error('Подключение отменено'))
+  return enqueue(tearDown)
+}
+
+function emergencyCleanupSync() {
+  if (active?.mode === 'tun') tunManager.emergencyCleanupSync()
+  if (active?.proxySet || killSwitchEngaged) clearOwnedProxy(active?.httpPort)
+  active?.proc.kill()
+}
+
+module.exports = {
+  connect, disconnect, getStatus: () => status, getMode: () => active?.mode,
+  isKillSwitchEngaged: () => killSwitchEngaged,
+  clearProxy, setKillSwitch: enabled => { killSwitchEnabled = enabled }, emergencyCleanupSync,
+}

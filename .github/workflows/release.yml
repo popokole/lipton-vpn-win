@@ -22,7 +22,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Test
+        run: npm test
+
       - name: Build & publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist -- --publish always
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if ($env:WIN_CSC_LINK) {
+            npm run dist -- --publish always --config.forceCodeSigning=true
+          } else {
+            Write-Warning "Windows code signing is not configured"
+            npm run dist -- --publish always
+          }
+          exit $LASTEXITCODE
