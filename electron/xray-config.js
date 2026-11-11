@@ -32,17 +32,13 @@ function streamSettings(s) {
     ss.httpSettings = { path: s.path || '/', host: s.host ? [s.host] : [] }
   } else if (s.network === 'httpupgrade') {
     ss.httpupgradeSettings = { path: s.path || '/', host: s.host || s.sni }
-  } else if (s.network === 'xhttp') {
-    ss.xhttpSettings = {
+  } else if (s.network === 'xhttp' || s.network === 'splithttp') {
+    const settingsKey = s.network === 'xhttp' ? 'xhttpSettings' : 'splithttpSettings'
+    ss[settingsKey] = {
       path: s.path || '/',
       host: s.host || '',
       mode: s.mode || 'auto',
-    }
-  } else if (s.network === 'splithttp') {
-    ss.splithttpSettings = {
-      path: s.path || '/',
-      host: s.host || '',
-      mode: s.mode || 'auto',
+      ...(s.xhttpExtra ? { extra: s.xhttpExtra } : {}),
     }
   } else if (s.network === 'tcp' && s.host) {
     ss.tcpSettings = {

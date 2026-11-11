@@ -33,10 +33,12 @@ export function isAutoBalance(remark) {
   return /авто|auto|баланс|balanc/i.test(String(remark || ''))
 }
 
-// Сервер по умолчанию, когда человек сам ничего не выбирал: «Авто-баланс»
-// (он сам ведёт на быстрый узел), иначе с наименьшим пингом, иначе первый.
-export function defaultServer(servers) {
+// Выбранный сервер, пока он есть в списке. По умолчанию — «Авто-баланс»,
+// затем сервер с наименьшим пингом или первый в списке.
+export function defaultServer(servers, preferredId) {
   const list = Array.isArray(servers) ? servers : []
+  const preferred = preferredId && list.find(s => s.id === preferredId)
+  if (preferred) return preferred
   const auto = list.find(s => isAutoBalance(s.remark))
   if (auto) return auto
   const pinged = list.filter(s => typeof s.ping === 'number').sort((a, b) => a.ping - b.ping)

@@ -109,10 +109,22 @@ function parseUserInfo(headers) {
 
 // ─── URI parsers ──────────────────────────────────────────────────────────────
 
+function parseXhttpExtra(raw) {
+  if (!raw) return undefined
+  try {
+    const extra = JSON.parse(raw)
+    if (extra && typeof extra === 'object' && !Array.isArray(extra)) return extra
+  } catch {}
+  return undefined
+}
+
 function parseVless(uri) {
   try {
     const u = new URL(uri)
     const p = Object.fromEntries(u.searchParams)
+    const network = p.type || 'tcp'
+    const xhttpExtra = network === 'xhttp' || network === 'splithttp' ? parseXhttpExtra(p.extra) : undefined
+    const mode = p.mode || xhttpExtra?.mode
     return {
       id: crypto.randomUUID(),
       protocol: 'vless',
@@ -120,7 +132,7 @@ function parseVless(uri) {
       port: parseInt(u.port) || 443,
       uuid: u.username,
       remark: decodeURIComponent(u.hash.slice(1)) || u.hostname,
-      network: p.type || 'tcp',
+      network,
       security: p.security || 'none',
       flow: p.flow || '',
       sni: p.sni || u.hostname,
@@ -132,7 +144,8 @@ function parseVless(uri) {
       headerType: p.headerType || '',
       alpn: p.alpn || '',
       serviceName: p.serviceName || '',
-      mode: ['auto', 'packet-up', 'stream-up', 'stream-one'].includes(p.mode) ? p.mode : 'auto',
+      mode: ['auto', 'packet-up', 'stream-up', 'stream-one'].includes(mode) ? mode : 'auto',
+      ...(xhttpExtra ? { xhttpExtra } : {}),
       ping: null,
     }
   } catch { return null }
@@ -202,14 +215,32 @@ function decodeContent(raw) {
   return t
 }
 
+function parseSubscriptionServers(raw, previousServers) {
+  const previousIds = new Map()
+  const identity = server => JSON.stringify([
+    server.protocol, server.remark, server.address, server.port, server.network, server.security,
+    server.sni, server.host, server.path, server.serviceName,
+  ])
+  for (const server of previousServers || []) {
+    if (!server?.id) continue
+    const key = identity(server)
+    const ids = previousIds.get(key) || []
+    ids.push(server.id)
+    previousIds.set(key, ids)
+  }
+  return decodeContent(raw).split('\n').map(parseUri).filter(Boolean).map(server => {
+    const id = previousIds.get(identity(server))?.shift()
+    return id ? { ...server, id } : server
+  })
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-async function fetchAndParse(url) {
+async function fetchAndParse(url, previousServers) {
   const resp = await fetchRaw(url)
   if (resp.status !== 200) throw new Error(`Ошибка сервера (${resp.status})`)
 
-  const content = decodeContent(resp.body)
-  const servers = content.split('\n').map(parseUri).filter(Boolean)
+  const servers = parseSubscriptionServers(resp.body, previousServers)
 
   if (servers.length === 0) throw new Error('В подписке не найдено серверов')
 
@@ -249,7 +280,7 @@ async function add(url) {
 }
 
 async function refresh(sub, subscriptions) {
-  const { servers, userInfo } = await fetchAndParse(sub.url)
+  const { servers, userInfo } = await fetchAndParse(sub.url, sub.servers)
   const updated = subscriptions.map(s =>
     s.id === sub.id ? { ...s, servers, userInfo, lastUpdated: Date.now() } : s
   )
@@ -277,4 +308,4 @@ async function pingAll(sub, subscriptions, pingFn = null) {
   return { success: true, subscriptions: updated }
 }
 
-module.exports = { validateUrl, fetchAndParse, add, refresh, pingAll, parseUri, getHwid }
+module.exports = { validateUrl, fetchAndParse, add, refresh, pingAll, parseUri, parseSubscriptionServers, getHwid }

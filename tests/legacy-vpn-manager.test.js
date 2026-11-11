@@ -6,7 +6,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { PassThrough } = require('node:stream')
 const test = require('node:test')
-const { parseUri } = require('../electron/subscription-manager')
+const { parseUri, parseSubscriptionServers } = require('../electron/subscription-manager')
 const { generateConfig } = require('../electron/xray-config')
 const { generateSingboxConfig } = require('../electron/singbox-config')
 
@@ -124,6 +124,42 @@ test('Xray keeps the XHTTP packet-up mode from the subscription', () => {
   const transport = generateConfig(parsed).outbounds[0].streamSettings.xhttpSettings
   assert.equal(transport.mode, 'packet-up')
   assert.equal(transport.path, '/stream')
+})
+
+test('XHTTP links preserve extra settings through subscription storage and Xray config generation', () => {
+  const extra = {
+    uplinkHTTPMethod: 'GET',
+    uplinkDataPlacement: 'header',
+    uplinkDataKey: 'X-Test-Data',
+    scMaxEachPostBytes: '8192',
+    xmux: { maxConcurrency: '4-8' },
+  }
+  for (const network of ['xhttp', 'splithttp']) {
+    const url = `vless://test@example.invalid?type=${network}&mode=packet-up&path=%2Fstream&extra=${encodeURIComponent(JSON.stringify(extra))}`
+    const server = JSON.parse(JSON.stringify(parseUri(url)))
+    const settings = generateConfig(server).outbounds[0].streamSettings[`${network}Settings`]
+    assert.equal(settings.mode, 'packet-up')
+    assert.deepEqual(settings.extra, extra)
+  }
+})
+
+test('an invalid XHTTP extra leaves the base link usable', () => {
+  const parsed = parseUri('vless://test@example.invalid?type=xhttp&mode=packet-up&extra=%7B')
+  const settings = generateConfig(parsed).outbounds[0].streamSettings.xhttpSettings
+  assert.equal(settings.mode, 'packet-up')
+  assert.equal(settings.extra, undefined)
+})
+
+test('subscription refresh keeps the IDs of existing servers while applying new connection options', () => {
+  const first = 'vless://test@example.invalid?type=tcp&fp=firefox#First'
+  const second = 'vless://test@example.invalid?type=tcp#Second'
+  const added = 'vless://test@example.invalid?type=tcp#New'
+  const initial = parseSubscriptionServers([first, second, second].join('\n'))
+  const updated = parseSubscriptionServers([second, first.replace('firefox', 'chrome'), second, added].join('\n'), initial)
+  assert.deepEqual(updated.slice(0, 3).map(s => s.id), [initial[1].id, initial[0].id, initial[2].id])
+  assert.equal(updated[1].fp, 'chrome')
+  assert.ok(updated[3].id)
+  assert.equal(new Set(updated.map(s => s.id)).size, updated.length)
 })
 
 test('Xray TUN has one DNS path and routes bypass traffic before it reaches Xray', () => {

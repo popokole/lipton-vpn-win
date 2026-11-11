@@ -308,7 +308,7 @@ export default function App() {
       await window.api.vpnDisconnect()
       return
     }
-    const targetId = activeServerId || defaultServer(visibleServers)?.id
+    const targetId = defaultServer(visibleServers, activeServerId)?.id
     if (!targetId) return
     setVpnStatus('connecting')
     const result = await window.api.vpnConnect(targetId)

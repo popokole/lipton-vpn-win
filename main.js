@@ -444,8 +444,8 @@ async function syncSubscription() {
   }
 
   try {
-    const { servers, userInfo } = await subscriptionManager.fetchAndParse(url)
     const prev = (settings.subscriptions || []).find(s => s.managed)
+    const { servers, userInfo } = await subscriptionManager.fetchAndParse(url, prev?.servers)
     const managed = {
       id: prev?.id || 'managed',
       name: 'Lipton VPN',
@@ -1726,16 +1726,10 @@ async function doAutoConnect(attempt = 0) {
   if (vpnManager.getStatus() !== 'disconnected') return
   const myGen = autoConnectGen
   const settings = settingsManager.getAll()
-  const subs = settings.subscriptions || []
-  const serverId = settings.activeServerId || defaultServerOf(subs.flatMap(s => s.servers || []))?.id
-  if (!serverId) return
-
-  let server = null
-  for (const sub of subs) {
-    server = (sub.servers || []).find(s => s.id === serverId)
-    if (server) break
-  }
+  const servers = (settings.subscriptions || []).flatMap(s => s.servers || [])
+  const server = servers.find(s => s.id === settings.activeServerId) || defaultServerOf(servers)
   if (!server) return
+  const serverId = server.id
 
   console.log(`[AutoConnect] Подключение к: ${server.remark || server.address}${attempt ? ` (повтор ${attempt}/${AUTO_CONNECT_RETRY_MS.length})` : ''}`)
   sendVpnStatus({ status: 'connecting' })

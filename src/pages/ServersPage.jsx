@@ -149,7 +149,7 @@ export default function ServersPage({
   const bypassPlan = !!plan?.bypass
   const { auto, bypass, regular } = groupServers(servers, { bypassPlan })
   const showPromo = !!offer && plan?.kind === 'active' && !bypassPlan && !!onBuyBypass
-  const effectiveActive = activeServerId || defaultServer(servers)?.id
+  const effectiveActive = defaultServer(servers, activeServerId)?.id
 
   const head = (
     <div className="page-head-row">

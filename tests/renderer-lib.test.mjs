@@ -169,6 +169,8 @@ test('servers: по умолчанию «Авто-баланс», иначе с�
     { id: 'nl', remark: '🇳🇱 Нидерланды', ping: 120 },
   ]
   assert.equal(defaultServer(list).id, 'auto')
+  assert.equal(defaultServer(list, 'nl').id, 'nl')
+  assert.equal(defaultServer(list, 'stale-id').id, 'auto')
   assert.equal(defaultServer(list.filter(s => s.id !== 'auto')).id, 'nl')
   assert.equal(defaultServer([{ id: 'a', remark: 'A' }, { id: 'b', remark: 'B' }]).id, 'a')
   assert.equal(defaultServer([]), null)
