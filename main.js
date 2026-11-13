@@ -72,7 +72,7 @@ const vpnManager = {
 // туннеля: обновить подписку и оплатить можно, даже если туннель не работает.
 function serviceHosts(subs) {
   const hosts = new Set()
-  const add = u => { try { hosts.add(new URL(u).hostname) } catch {} }
+  const add = u => { try { hosts.add(new URL(subscriptionManager.normalizeUrl(u)).hostname) } catch {} }
   add(apiClient.API_BASE)
   add(TRIAL_URL)
   for (const s of subs || []) if (s.managed || s.isTrial) add(s.url)
@@ -430,7 +430,7 @@ async function syncSubscription() {
   }
 
   const settings = settingsManager.getAll()
-  const url = view?.subscription_url
+  const url = subscriptionManager.normalizeUrl(view?.subscription_url)
   // Убираем и managed, и гостевой пробный доступ: после входа в аккаунт он больше
   // не нужен (иначе «висит» рядом с реальной подпиской). «15 минут бесплатно»
   // вошедшего оставляем, пока у аккаунта нет своей ссылки.
@@ -1404,7 +1404,7 @@ async function reconnectAfterRelink(prevRemark) {
 
 // ─── Trial subscription ───────────────────────────────────────────────────────
 
-const TRIAL_URL = 'https://api.videoload.tech/NcvZvQsDXeQ1TJZu'
+const TRIAL_URL = `https://${subscriptionManager.SUBSCRIPTION_DOMAIN}/NcvZvQsDXeQ1TJZu`
 const TRIAL_DURATION = 60 * 60 * 1000
 const DAILY_TRIAL_DURATION = 15 * 60 * 1000
 // Прежний тест-доступ по общей ссылке (если на сервере гостевой доступ выключен):

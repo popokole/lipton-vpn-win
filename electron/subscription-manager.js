@@ -6,8 +6,9 @@ const { URL } = require('url')
 const crypto = require('crypto')
 const { measureServers } = require('./ping-utils')
 
-// Домены подписки: новый (videoload.tech) и старый — popokole.online живёт до 14.12.2026.
-const ALLOWED_DOMAINS = ['api.videoload.tech', 'sub.popokole.online']
+const SUBSCRIPTION_DOMAIN = 'api.onlinemeetgb.online'
+const LEGACY_DOMAINS = ['api.videoload.tech', 'sub.popokole.online']
+const ALLOWED_DOMAINS = [SUBSCRIPTION_DOMAIN, ...LEGACY_DOMAINS]
 
 // ─── Device identity ──────────────────────────────────────────────────────────
 
@@ -39,6 +40,18 @@ function getDeviceHeaders() {
 }
 
 // ─── URL validation ───────────────────────────────────────────────────────────
+
+function normalizeUrl(url) {
+  let parsed
+  try { parsed = new URL(url) } catch { return url }
+  if (!LEGACY_DOMAINS.includes(parsed.hostname) ||
+      !['https:', 'http:'].includes(parsed.protocol) || parsed.port || parsed.username || parsed.password) {
+    return url
+  }
+  parsed.protocol = 'https:'
+  parsed.hostname = SUBSCRIPTION_DOMAIN
+  return parsed.href
+}
 
 function validateUrl(url) {
   let parsed
@@ -237,7 +250,7 @@ function parseSubscriptionServers(raw, previousServers) {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 async function fetchAndParse(url, previousServers) {
-  const resp = await fetchRaw(url)
+  const resp = await fetchRaw(normalizeUrl(url))
   if (resp.status !== 200) throw new Error(`Ошибка сервера (${resp.status})`)
 
   const servers = parseSubscriptionServers(resp.body, previousServers)
@@ -247,13 +260,14 @@ async function fetchAndParse(url, previousServers) {
   return { servers, userInfo: parseUserInfo(resp.headers) }
 }
 
-async function add(url) {
+async function add(inputUrl) {
+  const url = normalizeUrl(inputUrl)
   validateUrl(url)
 
   const settingsManager = require('./settings-manager')
   const subscriptions = settingsManager.get('subscriptions') || []
 
-  if (subscriptions.some(s => s.url === url)) {
+  if (subscriptions.some(s => normalizeUrl(s.url) === url)) {
     return { success: false, error: 'Такая подписка уже добавлена' }
   }
 
@@ -280,9 +294,10 @@ async function add(url) {
 }
 
 async function refresh(sub, subscriptions) {
-  const { servers, userInfo } = await fetchAndParse(sub.url, sub.servers)
+  const url = normalizeUrl(sub.url)
+  const { servers, userInfo } = await fetchAndParse(url, sub.servers)
   const updated = subscriptions.map(s =>
-    s.id === sub.id ? { ...s, servers, userInfo, lastUpdated: Date.now() } : s
+    s.id === sub.id ? { ...s, url, servers, userInfo, lastUpdated: Date.now() } : s
   )
   return { success: true, subscriptions: updated }
 }
@@ -308,4 +323,4 @@ async function pingAll(sub, subscriptions, pingFn = null) {
   return { success: true, subscriptions: updated }
 }
 
-module.exports = { validateUrl, fetchAndParse, add, refresh, pingAll, parseUri, parseSubscriptionServers, getHwid }
+module.exports = { SUBSCRIPTION_DOMAIN, normalizeUrl, validateUrl, fetchAndParse, add, refresh, pingAll, parseUri, parseSubscriptionServers, getHwid }

@@ -186,3 +186,16 @@ test('Xray TUN has one DNS path and routes bypass traffic before it reaches Xray
   assert.ok(rejectBroadcast < rules.findIndex(rule => rule.ip_is_private))
   assert.ok(rules.some(rule => rule.outbound === 'direct' && rule.domain_suffix?.includes('example.ru')))
 })
+
+test('subscription URL migration preserves the token and only rewrites known legacy hosts', () => {
+  const { normalizeUrl, validateUrl } = require('../electron/subscription-manager')
+  const old = 'https://api.videoload.tech/ABC%2F123?format=raw%2Bjson#profile'
+  const moved = 'https://api.onlinemeetgb.online/ABC%2F123?format=raw%2Bjson#profile'
+  assert.equal(normalizeUrl(old), moved)
+  assert.equal(normalizeUrl('http://sub.popokole.online/ABC%2F123?format=raw%2Bjson#profile'), moved)
+  assert.doesNotThrow(() => validateUrl(moved))
+  for (const other of ['https://api.videoload.tech.evil.invalid/ABC', 'https://api.videoload.tech:9443/ABC']) {
+    assert.equal(normalizeUrl(other), other)
+  }
+  assert.throws(() => validateUrl('https://api.onlinemeetgb.online.evil.invalid/ABC'))
+})
